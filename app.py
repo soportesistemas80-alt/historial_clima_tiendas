@@ -1,8 +1,7 @@
 import os
 import requests
 import json
-import csv  # Necesario para DictWriter
-# CORRECCIÓN: Imports de IO y Flask para Streaming
+import csv
 from io import BytesIO, StringIO
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
@@ -11,6 +10,8 @@ from flask import Flask, render_template, request, jsonify, send_file, Response,
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.platypus import Paragraph, SimpleDocTemplate
+# Importación necesaria para generar XLSX
+import xlsxwriter
 
 # Cargar variables de entorno
 load_dotenv()
@@ -46,26 +47,7 @@ TIENDAS_MAP = {
     "Templo 35": (3.540330538147451, -76.31075454232808), "Templo 36": (4.750430032121445, -75.91210409550338),
 }
 
-
-def agrupar_y_ordenar_tiendas(tiendas_map):
-    agrupadas = {'Shopping': [], 'Templo': []}
-    for nombre in tiendas_map.keys():
-        clave = "Shopping" if nombre.startswith("Shopping") else ("Templo" if nombre.startswith("Templo") else None)
-        if clave:
-            num_str = nombre.split()[-1]
-            try:
-                num = int(''.join(filter(str.isdigit, num_str)))
-            except ValueError:
-                num = 9999
-            agrupadas[clave].append((num, nombre))
-    agrupadas['Shopping'].sort();
-    agrupadas['Templo'].sort()
-    return {'Shopping': [n for _, n in agrupadas['Shopping']], 'Templo': [n for _, n in agrupadas['Templo']]}
-
-
-TIENDAS_AGRUPADAS = agrupar_y_ordenar_tiendas(TIENDAS_MAP)
-
-# Lista de festivos de Colombia para 2024
+# La lista de festivos ya no se utiliza para el procesamiento, pero se deja por si acaso.
 DIAS_FESTIVOS_COLOMBIA_2024 = {
     '2024-01-01': 'Año Nuevo', '2024-01-08': 'Día de Reyes Magos', '2024-03-25': 'Día de San José',
     '2024-03-28': 'Jueves Santo', '2024-03-29': 'Viernes Santo', '2024-05-01': 'Día del Trabajo',
@@ -77,22 +59,56 @@ DIAS_FESTIVOS_COLOMBIA_2024 = {
 DIAS_SEMANA_ES = {0: 'Lunes', 1: 'Martes', 2: 'Miércoles', 3: 'Jueves', 4: 'Viernes', 5: 'Sábado', 6: 'Domingo'}
 
 
+def agrupar_y_ordenar_tiendas(tiendas_map):
+    """Agrupa las tiendas por su tipo (Shopping, Templo, etc.) y las ordena alfabéticamente."""
+    agrupadas = {}
+    for nombre in sorted(tiendas_map.keys()):
+        # Asume que el tipo es la primera palabra del nombre (Shopping, Templo)
+        tipo = nombre.split()[0]
+        if tipo not in agrupadas:
+            agrupadas[tipo] = []
+        agrupadas[tipo].append(nombre)
+    return agrupadas
+
+
+TIENDAS_AGRUPADAS = agrupar_y_ordenar_tiendas(TIENDAS_MAP)
+
+
 # =========================================================================
-# 2. FUNCIONES DE LÓGICA DE NEGOCIO Y API (USANDO OPEN-METEO)
+# 2. FUNCIONES DE LÓGICA DE NEGOCIO Y API (CON FILTRO DE AÑO)
 # =========================================================================
 
-def obtener_historial_climatico(lat, lon):
-    fecha_inicio = "2024-01-01"
+def obtener_historial_climatico(lat, lon, año):
+    """Obtiene el historial climático desde el 1 de enero del año especificado
+    hasta 5 días antes de hoy."""
+
+    try:
+        año_int = int(año)
+    except ValueError:
+        return {"error": "El año proporcionado no es válido."}
+
+    fecha_inicio = f"{año_int}-01-01"
+
     hoy = datetime.now()
     fecha_fin_dt = hoy - timedelta(days=5)
     fecha_fin = fecha_fin_dt.strftime('%Y-%m-%d')
 
-    # Error de rango
-    try:
-        if datetime.strptime(fecha_inicio, '%Y-%m-%d') > datetime.strptime(fecha_fin, '%Y-%m-%d'):
-            return {"error": f"Rango de fechas inválido: {fecha_inicio} a {fecha_fin}. No hay datos suficientes."}
-    except ValueError:
-        return {"error": "Error interno al procesar las fechas. Verifique el formato."}
+    # Ajuste de rango de fechas si el año consultado es posterior al actual
+    if datetime.strptime(fecha_inicio, '%Y-%m-%d') > fecha_fin_dt:
+        if año_int == hoy.year:
+            # Si es el año actual, ajusta la fecha fin a lo disponible
+            pass
+        else:
+            # Si el año es futuro o el rango es inválido, retorna error
+            return {"error": f"Rango de fechas inválido. No hay datos disponibles para el año {año_int}."}
+
+    # Si el año consultado es anterior al actual, se usa el fin de año del año consultado
+    if año_int < hoy.year:
+        fecha_fin = f"{año_int}-12-31"
+
+    # Límite superior para el año de consulta para evitar errores con años muy lejanos
+    if año_int < 2015 or año_int > hoy.year:
+        return {"error": f"Consulta limitada al rango 2015-{hoy.year}."}
 
     url = (f"https://archive-api.open-meteo.com/v1/archive?"
            f"latitude={lat}&longitude={lon}&start_date={fecha_inicio}&end_date={fecha_fin}"
@@ -131,19 +147,17 @@ def obtener_historial_climatico(lat, lon):
             except ValueError:
                 nombre_dia = '-'
 
-            es_festivo = 'Sí' if fecha_str in DIAS_FESTIVOS_COLOMBIA_2024 else 'No'
-            nombre_festivo = DIAS_FESTIVOS_COLOMBIA_2024.get(fecha_str, '')
+            # >>> Lógica de festivos eliminada <<<
 
             datos_dia = {
                 'fecha': fecha_str,
-                'nombre_dia': nombre_dia,  # <-- CAMPO NUEVO
-                'es_festivo': es_festivo,  # <-- CAMPO NUEVO
-                'nombre_festivo': nombre_festivo,  # <-- CAMPO NUEVO
+                'nombre_dia': nombre_dia,
+                # 'es_festivo' y 'nombre_festivo' eliminados
                 'tmax': tmax_list[i] if i < len(tmax_list) else None,
                 'tmin': tmin_list[i] if i < len(tmin_list) else None,
                 'precipitacion_mm': precip_list[i] if i < len(precip_list) else None,
                 'viento_kmh': viento_list[i] if i < len(viento_list) else None,
-                'nubosidad_perc': 50,
+                'nubosidad_perc': 50,  # Dato simulado
                 'condiciones': map_wmo_code(code_list[i] if i < len(code_list) else None)
             }
             datos_procesados.append(datos_dia)
@@ -188,28 +202,29 @@ def calcular_ranking_anual(tiendas_map):
     fecha_inicio = "2024-01-01"
     hoy = datetime.now()
     fecha_fin = (hoy - timedelta(days=5)).strftime('%Y-%m-%d')
+    año_base = 2024
 
     for nombre, (lat, lon) in tiendas_map.items():
-        datos_crudos = obtener_historial_climatico(lat, lon)
+        datos_crudos = obtener_historial_climatico(lat, lon, año_base)
         if isinstance(datos_crudos, dict) and "error" in datos_crudos:
             print(f"Error al obtener datos para {nombre}: {datos_crudos['error']}")
-            ranking.append({'tienda': nombre, 'tmax_promedio': None, 'lat': lat, 'lon': lon})
+            ranking.append({'tienda': nombre, 'tmax_promedio': None, 'lat': lat, 'lon': lon, 'tipo': nombre.split()[0]})
             continue
         if datos_crudos:
             tmax_validos = [dia['tmax'] for dia in datos_crudos if dia.get('tmax') is not None]
             avg_tmax = sum(tmax_validos) / len(tmax_validos) if tmax_validos else None
             ranking.append(
                 {'tienda': nombre, 'tmax_promedio': round(avg_tmax, 2) if avg_tmax is not None else None, 'lat': lat,
-                 'lon': lon})
+                 'lon': lon, 'tipo': nombre.split()[0]})
         else:
-            ranking.append({'tienda': nombre, 'tmax_promedio': None, 'lat': lat, 'lon': lon})
+            ranking.append({'tienda': nombre, 'tmax_promedio': None, 'lat': lat, 'lon': lon, 'tipo': nombre.split()[0]})
 
     ranking.sort(key=lambda x: x['tmax_promedio'] if x['tmax_promedio'] is not None else -float('inf'), reverse=True)
     return {'ranking': ranking, 'fecha_inicio': fecha_inicio, 'fecha_fin': fecha_fin}
 
 
 # =========================================================================
-# 3. RUTAS FLASK
+# 3. RUTAS FLASK (CON FILTRO DE AÑO)
 # =========================================================================
 
 @app.route("/", methods=["GET", "POST"])
@@ -217,20 +232,33 @@ def historial_detallado():
     tienda_seleccionada = None
     datos_historial = None
     error_message = None
-    filtros_aplicados = {'tmax_min': '', 'precip_min': '', 'viento_min': '', 'condiciones_filtro': 'TODAS'}
+
+    año_actual = datetime.now().year
+    # Por defecto, establece el año de consulta en el año actual
+    filtros_aplicados = {
+        'tmax_min': '', 'precip_min': '', 'viento_min': '',
+        'condiciones_filtro': 'TODAS',
+        'año_filtro': str(año_actual)
+    }
 
     if request.method == "POST":
         tienda_seleccionada = request.form.get("tienda")
+        # Aseguramos que el año_filtro se recupere correctamente del formulario
         filtros_aplicados = {
             'tmax_min': request.form.get("tmax_min", ""),
             'precip_min': request.form.get("precip_min", ""),
             'viento_min': request.form.get("viento_min", ""),
             'condiciones_filtro': request.form.get("condiciones_filtro", "TODAS"),
+            'año_filtro': request.form.get("año_filtro", str(año_actual)),
         }
 
         if tienda_seleccionada in TIENDAS_MAP:
             lat, lon = TIENDAS_MAP[tienda_seleccionada]
-            datos_crudos = obtener_historial_climatico(lat, lon)  # Ahora incluye día y festivo
+            año_consulta = filtros_aplicados['año_filtro']
+
+            # Pasar el año a la función
+            datos_crudos = obtener_historial_climatico(lat, lon, año_consulta)
+
             if isinstance(datos_crudos, dict) and "error" in datos_crudos:
                 error_message = datos_crudos["error"]
             else:
@@ -247,6 +275,7 @@ def historial_detallado():
                            datos_historial=datos_historial,
                            error_message=error_message,
                            filtros_aplicados=filtros_aplicados,
+                           año_actual=año_actual,
                            seccion_activa="historial")
 
 
@@ -260,123 +289,184 @@ def ranking_anual():
 
 
 # =========================================================================
-# FUNCIONES DE EXPORTACIÓN (CORREGIDA CON STREAMING, BOM y Delimitadores)
+# 4. FUNCIONES DE EXPORTACIÓN (CSV, XLSX, PDF)
 # =========================================================================
 
-def generate_csv_rows(datos, delimiter=',', include_bom=False):
-    """Generador que produce filas CSV, maneja BOM, delimitador y encabezados."""
-    # StringIO para escribir el texto línea por línea
-    string_io = StringIO(newline='')
+# Función de generador para CSV (stream)
+def generate_csv_rows(datos_historial):
+    """Generador que produce filas CSV a partir de datos de historial."""
 
-    # Encabezados amigables. Se añade Día y Festivo
-    key_mapping_friendly = {
-        'fecha': 'Fecha', 'nombre_dia': 'Día', 'es_festivo': 'Festivo', 'nombre_festivo': 'Nombre Festivo',
-        'tmax': 'T. Máx (°C)', 'tmin': 'T. Mín (°C)', 'precipitacion_mm': 'Lluvia (mm)',
-        'viento_kmh': 'Viento (km/h)', 'nubosidad_perc': 'Nubosidad (%)', 'condiciones': 'Condiciones'
-    }
-    headers_keys = list(key_mapping_friendly.keys())
+    # Define los encabezados para el CSV/Excel (sin columnas de festivos)
+    headers = [
+        'Fecha', 'Dia',
+        'T Max (°C)', 'T Min (°C)', 'Precipitacion (mm)',
+        'Viento Max (km/h)', 'Condiciones', 'Nubosidad (%)'
+    ]
 
-    writer = csv.DictWriter(string_io, fieldnames=headers_keys, extrasaction='ignore', delimiter=delimiter)
+    # 1. Yield the header row
+    output = StringIO()
+    writer = csv.writer(output)
+    writer.writerow(headers)
+    yield output.getvalue()
 
-    # 1. Escribir BOM si es para Excel (ayuda con la codificación)
-    if include_bom:
-        # El BOM debe ser codificado en UTF-8 y yield debe ser un string de bytes
-        yield u'\ufeff'.encode('utf-8')
+    # 2. Yield data rows
+    for dia in datos_historial:
+        output.seek(0)
+        output.truncate(0)
 
-        # 2. Escribir Encabezado
-    # Crear un diccionario con los nombres amigables
-    friendly_headers = {k: key_mapping_friendly[k] for k in headers_keys}
-    writer.writerow(friendly_headers)
-    string_io.seek(0)
+        row = [
+            dia.get('fecha', ''),
+            dia.get('nombre_dia', ''),
+            # 'es_festivo' y 'nombre_festivo' eliminados
+            dia.get('tmax', ''),
+            dia.get('tmin', ''),
+            dia.get('precipitacion_mm', ''),
+            dia.get('viento_kmh', ''),
+            dia.get('condiciones', ''),
+            dia.get('nubosidad_perc', '')
+        ]
+        writer.writerow(row)
+        yield output.getvalue()
 
-    # Yield debe ser un string de bytes si se incluyó el BOM (para mantener la consistencia)
-    yield string_io.read().encode('utf-8') if include_bom else string_io.read()
-    string_io.seek(0);
-    string_io.truncate(0)
 
-    # 3. Escribir Datos (fila por fila)
-    for row_data in datos:
-        # csv.DictWriter se encarga del delimitador
-        writer.writerow(row_data)
-        string_io.seek(0)
-        yield string_io.read().encode('utf-8') if include_bom else string_io.read()
-        string_io.seek(0);
-        string_io.truncate(0)
+# Función para generar XLSX (Excel)
+def exportar_xlsx_stream(tienda_nombre, año_consulta, datos_historial):
+    """Genera un archivo XLSX en memoria y lo devuelve como stream."""
+    buffer = BytesIO()
+    workbook = xlsxwriter.Workbook(buffer, {'in_memory': True})
+    worksheet = workbook.add_worksheet(f'Clima_{tienda_nombre}')
+
+    # Encabezados (sin columnas de festivos)
+    headers = [
+        'Fecha', 'Día',
+        'T Max (°C)', 'T Min (°C)', 'Precipitación (mm)',
+        'Viento Max (km/h)', 'Condiciones', 'Nubosidad (%)'
+    ]
+
+    # Formato de encabezado
+    header_format = workbook.add_format({'bold': True, 'bg_color': '#D9E1F2', 'border': 1})
+
+    # Escribir encabezados
+    for col_num, header in enumerate(headers):
+        worksheet.write(0, col_num, header, header_format)
+
+    # Escribir datos
+    row_num = 1
+    for dia in datos_historial:
+        col_num = 0
+        # Columna 0: Fecha
+        worksheet.write(row_num, col_num, dia.get('fecha', ''))
+        col_num += 1
+        # Columna 1: Día
+        worksheet.write(row_num, col_num, dia.get('nombre_dia', ''))
+        col_num += 1
+        # Columnas de Festivos eliminadas (continuamos desde T Max)
+        # Columna 2: T Max
+        worksheet.write(row_num, col_num, dia.get('tmax', ''))
+        col_num += 1
+        # Columna 3: T Min
+        worksheet.write(row_num, col_num, dia.get('tmin', ''))
+        col_num += 1
+        # Columna 4: Precipitación
+        worksheet.write(row_num, col_num, dia.get('precipitacion_mm', ''))
+        col_num += 1
+        # Columna 5: Viento
+        worksheet.write(row_num, col_num, dia.get('viento_kmh', ''))
+        col_num += 1
+        # Columna 6: Condiciones
+        worksheet.write(row_num, col_num, dia.get('condiciones', ''))
+        col_num += 1
+        # Columna 7: Nubosidad
+        worksheet.write(row_num, col_num, dia.get('nubosidad_perc', ''))
+        col_num += 1
+        row_num += 1
+
+    # AJUSTE: Usar worksheet.autofit() para ajustar todas las columnas
+    worksheet.autofit()
+
+    workbook.close()
+    buffer.seek(0)
+    return buffer
 
 
 @app.route("/exportar_datos/<formato>", methods=["POST"])
 def exportar_datos(formato):
-    """Genera y envía (STREAMING) los datos filtrados como un archivo CSV o XLSX (simulado con CSV)."""
+    """Maneja la exportación a CSV y XLSX."""
     datos_export_json = request.form.get('datos_export_json')
     tienda_nombre = request.form.get('tienda_nombre')
+    año_consulta = request.form.get('año_consulta')
 
     try:
-        datos = json.loads(datos_export_json)
+        datos_historial = json.loads(datos_export_json)
     except json.JSONDecodeError:
-        return f"Error decodificando datos para {formato}.", 400
-    if not datos:
-        return "No hay datos para exportar.", 400
+        return "Error al decodificar los datos para exportación.", 400
 
-    # Valores por defecto para CSV estándar
-    delimiter = ',';
-    mimetype = 'text/csv; charset=utf-8';  # Mimetype para descarga
-    download_ext = '.csv';
-    include_bom = False
-    is_excel = False
+    if not datos_historial:
+        return "No hay datos para exportar después de aplicar los filtros.", 404
 
-    if formato.lower() == 'excel':
-        delimiter = ';';  # Delimitador de punto y coma para Excel regional
-        download_ext = '_EXCEL.csv';  # Se usa .csv para que Excel lo abra, pero se nombra para identificar
-        include_bom = True;  # BOM para manejar acentos en Excel
-        is_excel = True
-        # Si se usa BOM, el mimetype debe ser más genérico o binario
-        mimetype = 'application/octet-stream'
+    filename_base = f"Clima_{tienda_nombre}_{año_consulta}_{datetime.now().strftime('%Y%m%d')}"
 
-    filename = f"Clima_{tienda_nombre}_{datetime.now().strftime('%Y%m%d')}{download_ext}"
+    if formato == 'csv':
+        response = Response(
+            stream_with_context(generate_csv_rows(datos_historial)),
+            mimetype='text/csv'
+        )
+        response.headers['Content-Disposition'] = f'attachment; filename={filename_base}.csv'
+        return response
 
-    # Si se incluye BOM, el generador produce bytes, y el mimetype debe reflejarlo
-    generator_output = stream_with_context(generate_csv_rows(datos, delimiter, include_bom))
+    elif formato == 'excel':
+        buffer = exportar_xlsx_stream(tienda_nombre, año_consulta, datos_historial)
+        return send_file(
+            buffer,
+            as_attachment=True,
+            download_name=f"{filename_base}.xlsx",
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
 
-    # Si se incluye BOM, usamos Response(..., mimetype=binario)
-    if is_excel:
-        response = Response(generator_output, mimetype=mimetype)
-    # Si es CSV estándar, usamos Response(..., mimetype=texto)
-    else:
-        # Aseguramos que se envía como texto si no se usó BOM (no es binario)
-        response = Response(generator_output, mimetype=mimetype)
-
-    response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
-
-    return response
+    return "Formato de exportación no soportado.", 400
 
 
-# ... (La ruta generar_pdf no necesita cambios)
 @app.route("/generar_pdf", methods=["POST"])
 def generar_pdf():
+    # Obtener el año y el rango de fechas para el PDF
     datos_pdf_json = request.form.get('datos_pdf_json')
     tienda_nombre = request.form.get('tienda_nombre')
+    año_consulta = request.form.get('año_consulta')
+
     try:
         datos_historial = json.loads(datos_pdf_json)
     except json.JSONDecodeError:
         return "Error al decodificar los datos para PDF.", 400
+
+    # Calcular el rango de fechas real
+    if datos_historial:
+        fecha_inicio_reporte = datos_historial[0]['fecha']
+        fecha_fin_reporte = datos_historial[-1]['fecha']
+    else:
+        # Usamos el año_consulta directamente si no hay datos
+        fecha_inicio_reporte = f"01-01-{año_consulta}"
+        fecha_fin_reporte = "Sin datos"
+
     buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=letter, title=f"Reporte Climático {tienda_nombre}")
+    doc = SimpleDocTemplate(buffer, pagesize=letter, title=f"Reporte Climático {tienda_nombre} - {año_consulta}")
     styles = getSampleStyleSheet()
     styles.add(ParagraphStyle(name='Data', fontSize=10, leading=12))
     story = []
-    story.append(Paragraph(f"<b>Reporte Climático Detallado para: {tienda_nombre}</b>", styles['Heading1']))
+
     story.append(
-        Paragraph(f"Rango de fechas consultado: Desde el 1 de enero de 2024 hasta hace 5 días.", styles['Normal']))
+        Paragraph(f"<b>Reporte Climático Detallado para: {tienda_nombre} ({año_consulta})</b>", styles['Heading1']))
+    story.append(
+        Paragraph(f"Rango de fechas consultado: Desde {fecha_inicio_reporte} hasta {fecha_fin_reporte}.",
+                  styles['Normal']))
     story.append(Paragraph(f"Generado el: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", styles['Normal']))
     story.append(Paragraph(f"Días incluidos en el reporte (tras filtros): {len(datos_historial)}", styles['Normal']))
     story.append(Paragraph("<br/>", styles['Normal']))
 
     for dia in datos_historial:
-        # Añadir Día, Festivo y Nombre Festivo al PDF
-        festivo_info = f" (Día Festivo: {dia.get('nombre_festivo')})" if dia.get('es_festivo') == 'Sí' else ""
+        # La información de festivos ha sido eliminada del PDF
         dia_semana = dia.get('nombre_dia', '')
         linea = (
-            f"<b>Fecha:</b> {dia.get('fecha')} ({dia_semana}){festivo_info} | <b>T Max/Min:</b> {dia.get('tmax')}/{dia.get('tmin')} °C | "
+            f"<b>Fecha:</b> {dia.get('fecha')} ({dia_semana}) | <b>T Max/Min:</b> {dia.get('tmax')}/{dia.get('tmin')} °C | "
             f"<b>Lluvia:</b> {dia.get('precipitacion_mm')} mm | <b>Viento:</b> {dia.get('viento_kmh')} km/h | "
             f"<b>Condiciones:</b> {dia.get('condiciones', 'N/A')}")
         story.append(Paragraph(linea, styles['Data']))
@@ -385,7 +475,7 @@ def generar_pdf():
     buffer.seek(0)
     return send_file(
         buffer, as_attachment=True,
-        download_name=f"Reporte_Climatico_{tienda_nombre}_{datetime.now().strftime('%Y%m%d')}.pdf",
+        download_name=f"Reporte_Climatico_{tienda_nombre}_{año_consulta}_{datetime.now().strftime('%Y%m%d')}.pdf",
         mimetype='application/pdf'
     )
 

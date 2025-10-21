@@ -27,284 +27,264 @@
         }
     </script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
-
-        body {
-            font-family: 'Inter', sans-serif;
+        /* Estilo para el contenedor principal para centrar mejor en desktop */
+        .container-wrapper {
+            max-width: 1200px;
         }
-        /* Estilo sutil para la pestaña activa */
+        /* Estilo para la barra lateral fija en pantallas grandes */
+        @media (min-width: 1024px) {
+            .sidebar {
+                position: fixed;
+                top: 0;
+                bottom: 0;
+                height: 100vh;
+                overflow-y: auto;
+            }
+        }
+        /* Estilo para las pestañas */
+        .tab-button {
+            border-bottom-width: 2px;
+            transition: all 0.15s;
+        }
         .tab-button.active {
-            border-bottom: 2px solid #1e3a8a;
-            color: #1e3a8a;
-            font-weight: 500;
+            border-color: #1e3a8a; /* primary-blue */
+            color: #1e3a8a; /* primary-blue */
+            font-weight: 600;
         }
-        /* Cabecera pegajosa de la tabla */
-        .table-sticky-header th {
-            position: sticky;
-            top: 0;
-            z-index: 10;
-            background-color: #f9fafb; /* Fondo ligeramente gris */
-        }
-        /* Ocultar flechas de input number */
-        input[type=number]::-webkit-inner-spin-button,
-        input[type=number]::-webkit-outer-spin-button {
-            -webkit-appearance: none;
-            margin: 0;
+        .tab-button:not(.active) {
+            border-color: transparent;
+            color: #6b7280; /* text-secondary */
         }
     </style>
 </head>
-<body class="p-4 md:p-8">
-
-    <div class="max-w-7xl mx-auto bg-white shadow-lg rounded-lg overflow-hidden border border-border-gray">
-
-        <header class="p-5 border-b border-border-gray">
-            <h1 class="text-xl font-semibold text-text-primary flex items-center">
-                <svg class="w-5 h-5 mr-2 text-primary-blue" xmlns="http://www.w.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l7.5-7.5 7.5 7.5M10.5 6a7.5 7.5 0 100 15 7.5 7.5 0 000-15z" clip-rule="evenodd" /></svg>
-                Análisis Climático Histórico
-            </h1>
-            <p class="text-xs text-text-secondary mt-1">EL TEMPLO DE LA MODA SAS</p>
+<body class="h-full">
+    <div class="min-h-full">
+        <header class="bg-white shadow-sm border-b border-border-gray sticky top-0 z-10">
+            <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-3">
+                <h1 class="text-xl font-bold tracking-tight text-primary-blue flex items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-6 h-6 mr-2 text-accent-red">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15a4.5 4.5 0 0 0 4.5 4.5h10.5a4.5 4.5 0 0 0 4.5-4.5M2.25 15h19.5" />
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18ZM9.75 8.25V4.5M14.25 8.25V4.5" />
+                    </svg>
+                    Análisis Climático - EL TEMPLO DE LA MODA SAS
+                </h1>
+            </div>
         </header>
 
-        <div class="flex border-b border-border-gray px-5 bg-gray-50">
-            <a href="{{ url_for('historial_detallado') }}"
-               class="tab-button py-3 px-4 text-sm text-text-secondary hover:text-primary-blue transition duration-150 {{ 'active' if seccion_activa == 'historial' }}">
-                Historial Detallado
-            </a>
-            <a href="{{ url_for('ranking_anual') }}"
-               class="tab-button py-3 px-4 text-sm text-text-secondary hover:text-primary-blue transition duration-150 {{ 'active' if seccion_activa == 'ranking' }}">
-                Ranking Anual
-            </a>
-        </div>
-
-        <div class="p-5 md:p-6">
-
-            {% if error_message %}
-                <div role="alert" class="bg-red-50 border border-red-200 text-accent-red p-3 rounded-md mb-6 flex items-start text-sm">
-                    <svg class="w-5 h-5 mr-2 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.852 3.264 2.657 3.264h14.48c1.805 0 3.523-1.764 2.656-3.264l-7.24-12.793a1.99 1.99 0 00-3.313 0l-7.24 12.793z" /></svg>
-                    <span><strong>Error:</strong> {{ error_message }}</span>
-                </div>
-            {% endif %}
+        <div class="mx-auto container-wrapper px-4 py-8 sm:px-6 lg:px-8">
+            <!-- PESTAÑAS DE NAVEGACIÓN -->
+            <div class="mb-6 border-b border-border-gray">
+                <nav class="-mb-px flex space-x-8" aria-label="Tabs">
+                    <a href="{{ url_for('historial_detallado') }}"
+                       class="tab-button {% if seccion_activa == 'historial' %}active{% endif %} whitespace-nowrap py-3 px-1 text-sm">
+                        Historial Detallado
+                    </a>
+                    <a href="{{ url_for('ranking_anual') }}"
+                       class="tab-button {% if seccion_activa == 'ranking' %}active{% endif %} whitespace-nowrap py-3 px-1 text-sm">
+                        Ranking Anual de Tiendas
+                    </a>
+                </nav>
+            </div>
 
             {% if seccion_activa == 'historial' %}
-
-                <h2 class="text-base font-semibold text-text-primary mb-4">Filtros de Consulta</h2>
-
-                <form id="mainForm" method="POST" action="{{ url_for('historial_detallado') }}" class="grid grid-cols-1 md:grid-cols-6 gap-4 bg-secondary-gray p-4 rounded-md border border-border-gray mb-6">
-
-                    <div class="md:col-span-2">
-                        <label for="tienda" class="block text-xs font-medium text-gray-700 mb-1">Tienda</label>
-                        <select id="tienda" name="tienda"
-                                class="w-full pl-3 pr-10 py-1.5 text-sm border-gray-300 rounded-md shadow-sm focus:ring-primary-blue focus:border-primary-blue">
-
-                            <option value="" disabled {% if not tienda_seleccionada %}selected{% endif %}>Seleccionar...</option>
-                            {% for tipo, nombres in tiendas_agrupadas.items() %}
-                                <optgroup label="{{ tipo }}">
-                                    {% for nombre in nombres %}
-                                        <option value="{{ nombre }}" {{ 'selected' if nombre == tienda_seleccionada }}>
-                                            {{ nombre }}
-                                        </option>
+                <!-- SECCIÓN: HISTORIAL DETALLADO -->
+                <div class="bg-white shadow-lg rounded-xl p-6 mb-8">
+                    <h2 class="text-2xl font-semibold text-primary-blue mb-4">Consulta de Historial Climático</h2>
+                    <form method="POST" action="{{ url_for('historial_detallado') }}" class="space-y-4">
+                        <!-- FILTRO DE TIENDA Y AÑO -->
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 border-b pb-4">
+                            <div>
+                                <label for="tienda" class="block text-sm font-medium text-text-primary mb-1">Seleccionar Tienda</label>
+                                <select id="tienda" name="tienda" required
+                                        class="mt-1 block w-full rounded-lg border border-border-gray bg-secondary-gray p-2.5 text-text-primary focus:border-primary-blue focus:ring-primary-blue shadow-sm text-sm">
+                                    <option value="" disabled selected>--- Seleccione una Tienda ---</option>
+                                    {% for tipo, nombres in tiendas_agrupadas.items() %}
+                                        <optgroup label="{{ tipo }}">
+                                            {% for nombre in nombres %}
+                                                <option value="{{ nombre }}" {% if tienda_seleccionada == nombre %}selected{% endif %}>{{ nombre }}</option>
+                                            {% endfor %}
+                                        </optgroup>
                                     {% endfor %}
-                                </optgroup>
-                            {% endfor %}
-                        </select>
-                    </div>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="año_filtro" class="block text-sm font-medium text-text-primary mb-1">Año de Consulta (2015 - {{ año_actual }})</label>
+                                <input type="number" id="año_filtro" name="año_filtro" min="2015" max="{{ año_actual }}" value="{{ filtros_aplicados.año_filtro if filtros_aplicados.año_filtro else año_actual }}" required
+                                       class="mt-1 block w-full rounded-lg border border-border-gray bg-secondary-gray p-2.5 text-text-primary focus:border-primary-blue focus:ring-primary-blue shadow-sm text-sm">
+                            </div>
+                        </div>
 
-                    <div>
-                        <label for="tmax_min" class="block text-xs font-medium text-gray-700 mb-1">T.Máx ≥ (°C)</label>
-                        <input type="number" step="0.1" id="tmax_min" name="tmax_min"
-                               value="{{ filtros_aplicados.tmax_min | default('') }}" placeholder="-"
-                               class="w-full shadow-sm text-sm border-gray-300 rounded-md p-1.5 focus:ring-primary-blue focus:border-primary-blue">
-                    </div>
+                        <!-- FILTROS ADICIONALES -->
+                        <div class="grid grid-cols-2 md:grid-cols-5 gap-4 pt-4">
+                            <div>
+                                <label for="tmax_min" class="block text-xs font-medium text-text-primary mb-1">T° Máx Mínima (°C)</label>
+                                <input type="number" step="0.1" id="tmax_min" name="tmax_min" value="{{ filtros_aplicados.tmax_min }}"
+                                       class="mt-1 block w-full rounded-lg border border-border-gray p-2 text-text-primary focus:border-primary-blue focus:ring-primary-blue shadow-sm text-sm">
+                            </div>
+                            <div>
+                                <label for="precip_min" class="block text-xs font-medium text-text-primary mb-1">Lluvia Mínima (mm)</label>
+                                <input type="number" step="0.1" id="precip_min" name="precip_min" value="{{ filtros_aplicados.precip_min }}"
+                                       class="mt-1 block w-full rounded-lg border border-border-gray p-2 text-text-primary focus:border-primary-blue focus:ring-primary-blue shadow-sm text-sm">
+                            </div>
+                            <div>
+                                <label for="viento_min" class="block text-xs font-medium text-text-primary mb-1">Viento Mínimo (km/h)</label>
+                                <input type="number" step="0.1" id="viento_min" name="viento_min" value="{{ filtros_aplicados.viento_min }}"
+                                       class="mt-1 block w-full rounded-lg border border-border-gray p-2 text-text-primary focus:border-primary-blue focus:ring-primary-blue shadow-sm text-sm">
+                            </div>
+                            <div class="col-span-2">
+                                <label for="condiciones_filtro" class="block text-xs font-medium text-text-primary mb-1">Filtrar por Condición</label>
+                                <select id="condiciones_filtro" name="condiciones_filtro"
+                                        class="mt-1 block w-full rounded-lg border border-border-gray p-2.5 text-text-primary focus:border-primary-blue focus:ring-primary-blue shadow-sm text-sm">
+                                    <option value="TODAS" {% if filtros_aplicados.condiciones_filtro == 'TODAS' %}selected{% endif %}>TODAS</option>
+                                    <option value="Despejado" {% if filtros_aplicados.condiciones_filtro == 'Despejado' %}selected{% endif %}>Despejado</option>
+                                    <option value="Mayormente Despejado a Parcialmente Nublado" {% if filtros_aplicados.condiciones_filtro == 'Mayormente Despejado a Parcialmente Nublado' %}selected{% endif %}>Mayormente Despejado/Nublado</option>
+                                    <option value="Niebla / Escarcha" {% if filtros_aplicados.condiciones_filtro == 'Niebla / Escarcha' %}selected{% endif %}>Niebla / Escarcha</option>
+                                    <option value="Llovizna" {% if filtros_aplicados.condiciones_filtro == 'Llovizna' %}selected{% endif %}>Llovizna</option>
+                                    <option value="Lluvia Moderada" {% if filtros_aplicados.condiciones_filtro == 'Lluvia Moderada' %}selected{% endif %}>Lluvia Moderada</option>
+                                    <option value="Aguaceros Fuertes" {% if filtros_aplicados.condiciones_filtro == 'Aguaceros Fuertes' %}selected{% endif %}>Aguaceros Fuertes</option>
+                                    <option value="Tormenta" {% if filtros_aplicados.condiciones_filtro == 'Tormenta' %}selected{% endif %}>Tormenta</option>
+                                    <option value="Condiciones Variadas" {% if filtros_aplicados.condiciones_filtro == 'Condiciones Variadas' %}selected{% endif %}>Condiciones Variadas</option>
+                                </select>
+                            </div>
+                        </div>
 
-                    <div>
-                        <label for="precip_min" class="block text-xs font-medium text-gray-700 mb-1">Lluvia ≥ (mm)</label>
-                        <input type="number" step="0.1" id="precip_min" name="precip_min"
-                               value="{{ filtros_aplicados.precip_min | default('') }}" placeholder="-"
-                               class="w-full shadow-sm text-sm border-gray-300 rounded-md p-1.5 focus:ring-primary-blue focus:border-primary-blue">
-                    </div>
+                        <div class="flex justify-end pt-4">
+                            <button type="submit"
+                                    class="inline-flex justify-center rounded-lg border border-transparent bg-primary-blue py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-primary-blue focus:ring-offset-2 transition duration-150">
+                                Consultar Historial
+                            </button>
+                        </div>
+                    </form>
+                </div>
 
-                    <div>
-                        <label for="condiciones_filtro" class="block text-xs font-medium text-gray-700 mb-1">Condición</label>
-                        <select id="condiciones_filtro" name="condiciones_filtro"
-                                class="w-full pl-3 pr-10 py-1.5 text-sm border-gray-300 rounded-md shadow-sm focus:ring-primary-blue focus:border-primary-blue">
-                            {% set all_conditions = ['TODAS', 'Despejado', 'Mayormente Despejado a Parcialmente Nublado', 'Niebla / Escarcha', 'Llovizna', 'Lluvia Moderada', 'Aguaceros Fuertes', 'Tormenta', 'Condiciones Variadas'] %}
-                            {% for cond in all_conditions %}
-                                <option value="{{ cond }}" {{ 'selected' if cond == filtros_aplicados.condiciones_filtro }}>
-                                    {{ cond }}
-                                </option>
-                            {% endfor %}
-                        </select>
+                {% if error_message %}
+                    <div class="bg-accent-red/10 border-l-4 border-accent-red p-4 rounded-lg">
+                        <div class="flex">
+                            <svg class="h-5 w-5 text-accent-red mr-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm-1-11a1 1 0 112 0v4a1 1 0 11-2 0V7zm1 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" />
+                            </svg>
+                            <p class="text-sm text-accent-red font-medium">{{ error_message }}</p>
+                        </div>
                     </div>
-
-                    <div class="self-end">
-                        <button type="submit" class="w-full bg-primary-blue hover:bg-blue-900 text-white font-medium py-1.5 px-4 rounded-md shadow-sm transition duration-150 text-sm flex items-center justify-center">
-                            <svg class="w-4 h-4 mr-1.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zM12 8v4m0 4h.01" /></svg>
-                            Filtrar
-                        </button>
-                    </div>
-                </form>
-
-                <div class="mt-6">
-                    {% if datos_historial and datos_historial | length > 0 %}
-                        <div class="flex justify-between items-center mb-3">
-                            <h3 class="text-base font-semibold text-text-primary">
-                                Historial Filtrado: <span class="text-primary-blue font-medium">{{ tienda_seleccionada }}</span>
-                                <span class="text-sm font-normal text-text-secondary">({{ datos_historial | length }} días)</span>
+                {% elif datos_historial is not none %}
+                    <!-- RESULTADOS Y EXPORTACIÓN -->
+                    <div class="bg-white shadow-lg rounded-xl p-6">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-xl font-semibold text-text-primary">
+                                Resultados para {{ tienda_seleccionada }} ({{ filtros_aplicados.año_filtro }})
                             </h3>
-                            <div class="flex items-center gap-2">
-                                <span class="text-xs font-medium text-gray-500">Exportar:</span>
-
-                                <form action="{{ url_for('exportar_datos', formato='excel') }}" method="POST" class="inline">
-                                    <input type="hidden" name="datos_export_json" class="datos_export_input">
+                            <!-- Botones de Exportación -->
+                            <div class="flex space-x-2">
+                                <form id="export-form" method="POST" action="">
+                                    <input type="hidden" name="datos_export_json" id="datos_export_json">
+                                    <input type="hidden" name="datos_pdf_json" id="datos_pdf_json">
                                     <input type="hidden" name="tienda_nombre" value="{{ tienda_seleccionada }}">
-                                    <button type="submit" class="text-xs bg-green-600 hover:bg-green-700 text-white font-medium py-1 px-2.5 rounded transition duration-150" title="Exportar a Excel (CSV compatible)">XLSX</button>
-                                </form>
-                                <form action="{{ url_for('exportar_datos', formato='csv') }}" method="POST" class="inline">
-                                    <input type="hidden" name="datos_export_json" class="datos_export_input">
-                                    <input type="hidden" name="tienda_nombre" value="{{ tienda_seleccionada }}">
-                                    <button type="submit" class="text-xs bg-gray-600 hover:bg-gray-700 text-white font-medium py-1 px-2.5 rounded transition duration-150" title="Exportar a CSV">CSV</button>
-                                </form>
-                                <form action="{{ url_for('generar_pdf') }}" method="POST" target="_blank" class="inline">
-                                    <input type="hidden" name="tienda_nombre" value="{{ tienda_seleccionada }}">
-                                    <input type="hidden" name="datos_pdf_json" id="datos_pdf_input">
-                                    <button type="submit" class="text-xs bg-red-600 hover:bg-red-700 text-white font-medium py-1 px-2.5 rounded transition duration-150" title="Generar PDF">PDF</button>
+                                    <input type="hidden" name="año_consulta" value="{{ filtros_aplicados.año_filtro }}">
+                                    <button type="button" onclick="handleExport('csv')"
+                                            class="inline-flex items-center rounded-lg border border-border-gray bg-white py-2 px-3 text-xs font-medium text-text-primary shadow-sm hover:bg-secondary-gray transition duration-150">
+                                        Exportar CSV
+                                    </button>
+                                    <button type="button" onclick="handleExport('excel')"
+                                            class="inline-flex items-center rounded-lg border border-border-gray bg-white py-2 px-3 text-xs font-medium text-text-primary shadow-sm hover:bg-secondary-gray transition duration-150">
+                                        Exportar XLSX
+                                    </button>
+                                    <button type="button" onclick="handleExport('pdf')"
+                                            class="inline-flex items-center rounded-lg border border-border-gray bg-white py-2 px-3 text-xs font-medium text-text-primary shadow-sm hover:bg-secondary-gray transition duration-150">
+                                        Generar PDF
+                                    </button>
                                 </form>
                             </div>
                         </div>
 
-                        <div class="overflow-x-auto rounded-md border border-border-gray max-h-[65vh] overflow-y-auto">
-                            <table class="min-w-full divide-y divide-gray-200">
-                                <thead class="table-sticky-header">
+                        {% if datos_historial | length > 0 %}
+                            <div class="overflow-x-auto rounded-lg border border-border-gray shadow-sm">
+                                <table class="min-w-full divide-y divide-border-gray">
+                                    <thead class="bg-secondary-gray">
+                                        <tr>
+                                            <th class="py-3 px-2 text-left text-xs font-semibold uppercase tracking-wider text-text-secondary">Fecha</th>
+                                            <th class="py-3 px-2 text-left text-xs font-semibold uppercase tracking-wider text-text-secondary">Día</th>
+                                            <th class="py-3 px-2 text-left text-xs font-semibold uppercase tracking-wider text-text-secondary">T. Max (°C)</th>
+                                            <th class="py-3 px-2 text-left text-xs font-semibold uppercase tracking-wider text-text-secondary">T. Min (°C)</th>
+                                            <th class="py-3 px-2 text-left text-xs font-semibold uppercase tracking-wider text-text-secondary">Lluvia (mm)</th>
+                                            <th class="py-3 px-2 text-left text-xs font-semibold uppercase tracking-wider text-text-secondary">Viento (km/h)</th>
+                                            <th class="py-3 px-2 text-left text-xs font-semibold uppercase tracking-wider text-text-secondary">Condiciones</th>
+                                            <th class="py-3 px-2 text-left text-xs font-semibold uppercase tracking-wider text-text-secondary">Nubosidad (%)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-border-gray bg-white">
+                                        {% for dia in datos_historial %}
+                                            <tr>
+                                                <td class="whitespace-nowrap py-3 px-2 text-sm font-medium text-text-primary">{{ dia.fecha }}</td>
+                                                <td class="whitespace-nowrap py-3 px-2 text-sm text-text-primary">{{ dia.nombre_dia }}</td>
+                                                <td class="whitespace-nowrap py-3 px-2 text-sm font-medium text-text-primary">{{ dia.tmax | round(1) }}</td>
+                                                <td class="whitespace-nowrap py-3 px-2 text-sm text-text-secondary">{{ dia.tmin | round(1) }}</td>
+                                                <td class="whitespace-nowrap py-3 px-2 text-sm text-text-secondary">{{ dia.precipitacion_mm | round(1) }}</td>
+                                                <td class="whitespace-nowrap py-3 px-2 text-sm text-text-secondary">{{ dia.viento_kmh | round(1) }}</td>
+                                                <td class="whitespace-nowrap py-3 px-2 text-sm text-text-secondary">{{ dia.condiciones }}</td>
+                                                <td class="whitespace-nowrap py-3 px-2 text-sm text-text-secondary">{{ dia.nubosidad_perc }}</td>
+                                            </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                            <p class="mt-4 text-sm text-text-secondary">Mostrando {{ datos_historial | length }} días (de {{ datos_historial | length }} días en total, después de aplicar filtros).</p>
+                        {% else %}
+                            <div class="p-4 text-center text-text-secondary">No se encontraron datos para los filtros aplicados.</div>
+                        {% endif %}
+                    </div>
+                {% endif %}
+
+            {% elif seccion_activa == 'ranking' %}
+                <!-- SECCIÓN: RANKING ANUAL -->
+                <div class="bg-white shadow-lg rounded-xl p-6">
+                    <h2 class="text-2xl font-semibold text-primary-blue mb-4">Ranking de Temperaturas Máximas Promedio ({{ ranking_data.fecha_inicio | default('N/A') }} a {{ ranking_data.fecha_fin | default('N/A') }})</h2>
+
+                    {% if ranking_data.ranking | length > 0 %}
+                        <div class="overflow-x-auto rounded-lg border border-border-gray shadow-sm">
+                            <table class="min-w-full divide-y divide-border-gray">
+                                <thead class="bg-secondary-gray">
                                     <tr>
-                                        <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Fecha</th>
-                                        <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Día</th>
-                                        <th class="px-3 py-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">Festivo</th>
-                                        <th class="px-3 py-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">T. Máx (°C)</th>
-                                        <th class="px-3 py-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">T. Mín (°C)</th>
-                                        <th class="px-3 py-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">Lluvia (mm)</th>
-                                        <th class="px-3 py-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">Viento (km/h)</th>
-                                        <th class="px-3 py-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">Nub. (%)</th>
-                                        <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Condiciones</th>
+                                        <th class="py-3 px-2 text-center text-xs font-semibold uppercase tracking-wider text-text-secondary w-1/12">#</th>
+                                        <th class="py-3 px-2 text-left text-xs font-semibold uppercase tracking-wider text-text-secondary w-4/12">Tienda</th>
+                                        <th class="py-3 px-2 text-left text-xs font-semibold uppercase tracking-wider text-text-secondary w-4/12">Tipo</th>
+                                        <th class="py-3 px-2 text-right text-xs font-semibold uppercase tracking-wider text-text-secondary w-3/12">T° Máx Promedio (°C)</th>
                                     </tr>
                                 </thead>
-                                <tbody class="bg-white divide-y divide-gray-100">
-                                    {% for dia in datos_historial %}
-                                        <tr class="hover:bg-gray-50 text-sm">
-                                            <td class="px-3 py-2 whitespace-nowrap font-medium text-gray-800">{{ dia.fecha }}</td>
-                                            <td class="px-3 py-2 whitespace-nowrap text-gray-600">{{ dia.nombre_dia | default('-') }}</td>
-                                            <td class="px-3 py-2 whitespace-nowrap text-center">
-                                                {% if dia.es_festivo == 'Sí' %}
-                                                    <span class="text-xs font-semibold text-accent-red">Sí</span>
+                                <tbody class="divide-y divide-border-gray bg-white">
+                                    {% for item in ranking_data.ranking %}
+                                        <tr class="{% if loop.index <= 3 %}bg-yellow-50/50{% endif %}">
+                                            <td class="whitespace-nowrap py-3 px-2 text-center text-sm font-bold text-text-primary">{{ loop.index }}</td>
+                                            <td class="whitespace-nowrap py-3 px-2 text-sm font-medium text-primary-blue">{{ item.tienda }}</td>
+                                            <td class="whitespace-nowrap py-3 px-2 text-sm text-text-secondary">{{ item.tipo }}</td>
+                                            <td class="whitespace-nowrap py-3 px-2 text-right text-sm font-semibold {% if item.tmax_promedio is not none and item.tmax_promedio >= 30 %}text-accent-red{% else %}text-highlight-green{% endif %}">
+                                                {% if item.tmax_promedio is not none %}
+                                                    {{ item.tmax_promedio | round(2) }}
                                                 {% else %}
-                                                    <span class="text-xs text-gray-400">No</span>
+                                                    N/A
                                                 {% endif %}
-                                            </td>
-                                            <td class="px-3 py-2 whitespace-nowrap text-center font-semibold text-accent-red">{{ '%.1f' % dia.tmax }}</td>
-                                            <td class="px-3 py-2 whitespace-nowrap text-center font-semibold text-primary-blue">{{ '%.1f' % dia.tmin }}</td>
-                                            <td class="px-3 py-2 whitespace-nowrap text-center text-gray-700">{{ '%.2f' % dia.precipitacion_mm }}</td>
-                                            <td class="px-3 py-2 whitespace-nowrap text-center text-gray-700">{{ '%.1f' % dia.viento_kmh }}</td>
-                                            <td class="px-3 py-2 whitespace-nowrap text-center text-gray-700">{{ '%.0f' % dia.nubosidad_perc }}</td>
-                                            <td class="px-3 py-2 text-gray-600 max-w-xs overflow-hidden text-ellipsis whitespace-nowrap">
-                                                {{ dia.condiciones }}
                                             </td>
                                         </tr>
                                     {% endfor %}
                                 </tbody>
                             </table>
                         </div>
-                    {% elif datos_historial is not none and tienda_seleccionada %}
-                        <div class="p-3 bg-yellow-50 border border-yellow-200 rounded-md text-yellow-700 text-sm flex items-start">
-                             <svg class="w-5 h-5 mr-2 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.852 3.264 2.657 3.264h14.48c1.805 0 3.523-1.764 2.656-3.264l-7.24-12.793a1.99 1.99 0 00-3.313 0l-7.24 12.793z" /></svg>
-                             <span>No se encontraron días que coincidan con los filtros aplicados para **{{ tienda_seleccionada }}**.</span>
-                        </div>
                     {% else %}
-                        <div class="p-3 bg-blue-50 border border-blue-200 rounded-md text-primary-blue text-sm flex items-start">
-                            <svg class="w-5 h-5 mr-2 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" /></svg>
-                            <span>Seleccione una tienda y aplique filtros para ver el historial climático detallado.</span>
-                        </div>
+                        <div class="p-4 text-center text-text-secondary">No se pudo generar el ranking o no hay datos.</div>
                     {% endif %}
                 </div>
-
-                <form id="exportForm" method="POST" target="_blank" style="display:none;">
-                    <input type="hidden" name="tienda_nombre" id="export_tienda_nombre" value="{{ tienda_seleccionada }}">
-                    <input type="hidden" name="datos_export_json" id="datos_export_json">
-                    <input type="hidden" name="datos_pdf_json" id="datos_pdf_json">
-                </form>
-
-            {% elif seccion_activa == 'ranking' %}
-                <h2 class="text-base font-semibold text-text-primary mb-4">Ranking Anual de T. Máxima Promedio</h2>
-
-                <p class="text-sm text-text-secondary mb-5 border-b pb-4">
-                    Clasificación de las tiendas según la temperatura máxima promedio registrada desde el 01/01/2024.
-                    <span class="font-medium text-yellow-600">Nota: El cálculo inicial puede tardar varios segundos.</span>
-                </p>
-
-                {% if not ranking_data or ranking_data.ranking is none %}
-                     <div class="text-center p-6 text-text-secondary">
-                        <svg class="animate-spin inline-block h-6 w-6 text-primary-blue mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                        <p>Calculando ranking...</p>
-                    </div>
-                {% elif ranking_data.ranking %}
-                    <p class="text-xs text-text-secondary mb-3">Período analizado: {{ ranking_data.fecha_inicio }} al {{ ranking_data.fecha_fin }}</p>
-
-                    <div class="overflow-x-auto rounded-md border border-border-gray">
-                        <table class="min-w-full divide-y divide-gray-200">
-                            <thead class="bg-gray-50 table-sticky-header">
-                                <tr>
-                                    <th class="px-3 py-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">#</th>
-                                    <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Tienda</th>
-                                    <th class="px-3 py-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">Tipo</th>
-                                    <th class="px-3 py-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">T. Máx Promedio (°C)</th>
-                                </tr>
-                            </thead>
-                            <tbody class="bg-white divide-y divide-gray-100">
-                                {% for item in ranking_data.ranking %}
-                                    <tr class="hover:bg-gray-50 text-sm">
-                                        <td class="px-3 py-2 whitespace-nowrap text-center font-semibold text-primary-blue">
-                                            {% if loop.index == 1 %} 🥇
-                                            {% elif loop.index == 2 %} 🥈
-                                            {% elif loop.index == 3 %} 🥉
-                                            {% else %} {{ loop.index }}
-                                            {% endif %}
-                                        </td>
-                                        <td class="px-3 py-2 whitespace-nowrap font-medium text-gray-800">{{ item.tienda }}</td>
-                                        <td class="px-3 py-2 whitespace-nowrap text-center">
-                                            {% set tipo = item.tipo | default('N/A') %}
-                                            <span class="text-xs font-medium px-2 py-0.5 rounded-full
-                                                {% if tipo == 'Shopping' %} bg-green-100 text-highlight-green
-                                                {% else %} bg-blue-100 text-primary-blue
-                                                {% endif %}">
-                                                {{ tipo }}
-                                            </span>
-                                        </td>
-                                        <td class="px-3 py-2 whitespace-nowrap text-center text-accent-red font-semibold">
-                                            {% if item.tmax_promedio is not none %}
-                                                {{ '%.2f' % item.tmax_promedio }}
-                                            {% else %}
-                                                <span class="text-text-secondary text-xs">N/A</span>
-                                            {% endif %}
-                                        </td>
-                                    </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                {% else %}
-                    <div class="p-3 bg-red-50 border border-red-200 rounded-md text-accent-red text-sm flex items-start">
-                        <svg class="w-5 h-5 mr-2 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.852 3.264 2.657 3.264h14.48c1.805 0 3.523-1.764 2.656-3.264l-7.24-12.793a1.99 1.99 0 00-3.313 0l-7.24 12.793z" /></svg>
-                        <span>Error al calcular el ranking. Verifique la conexión o intente más tarde.</span>
-                    </div>
-                {% endif %}
             {% endif %}
+        </div>
+    </div>
 
-        </div></div><script>
-        // Función de Exportación (Lógica sin cambios)
-        function exportData(format) {
-            const form = document.getElementById('exportForm');
-            const datosHistorial = {{ datos_historial | tojson | safe }};
+    <script>
+        function handleExport(format) {
+            const form = document.getElementById('export-form');
+            const datosHistorial = {{ datos_historial | tojson | safe }}; // Datos ya filtrados por Flask
 
             if (!datosHistorial || datosHistorial.length === 0) {
-                alert('No hay datos filtrados para exportar.');
+                // Usar un modal o un mensaje dentro del DOM en lugar de alert()
+                console.error('No hay datos filtrados para exportar.');
+                // Aquí podrías mostrar un modal personalizado o un mensaje de error en la UI.
                 return;
             }
 
@@ -319,6 +299,8 @@
             } else if (format === 'pdf') {
                 form.action = "{{ url_for('generar_pdf') }}";
             } else { return; }
+
+            // Submit del formulario
             form.submit();
         }
 
@@ -327,9 +309,11 @@
             const datosHistorial = {{ datos_historial | tojson | safe }};
             if (datosHistorial && datosHistorial.length > 0) {
                 const jsonStr = JSON.stringify(datosHistorial);
-                const pdfInput = document.getElementById('datos_pdf_input');
-                if (pdfInput) pdfInput.value = jsonStr;
-                document.querySelectorAll('.datos_export_input').forEach(input => input.value = jsonStr);
+                // Si la página se carga con datos (ej. después de un POST) inyectamos el JSON para los botones de exportación
+                const datosExportInput = document.getElementById('datos_export_json');
+                const datosPdfInput = document.getElementById('datos_pdf_json');
+                if (datosExportInput) datosExportInput.value = jsonStr;
+                if (datosPdfInput) datosPdfInput.value = jsonStr;
             }
         });
     </script>
