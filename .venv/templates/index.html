@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Historial Climático EL TEMPLO DE LA MODA SAS</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f8f9fa; }
+        .container { margin-top: 30px; margin-bottom: 50px; max-width: 1100px; }
+        /* Estilo para las pestañas de navegación */
+        .nav-link.active { font-weight: bold; border-bottom: 3px solid #007bff; color: #007bff !important; }
+        .card-header { background-color: #e9ecef; }
+        /* Estilo para la tabla de historial (scroll) */
+        .table-responsive { max-height: 600px; overflow-y: auto; }
+        .sticky-header { position: sticky; top: 0; background: white; z-index: 10; }
+        /* Badges de clima */
+        .bg-primary.badge-lluvia { background-color: #007bff !important; }
+        .bg-info.badge-lluvia { background-color: #17a2b8 !important; }
+        /* Estilos de las secciones de filtro */
+        .filter-section { padding: 15px; border: 1px solid #dee2e6; border-radius: 5px; height: 100%; }
+        .filter-section h6 { color: #495057; }
+        /* Estilos del área de carga del ranking */
+        #ranking-loading {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 300px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="text-center mb-4">Historial y Ranking Climático - EL TEMPLO DE LA MODA SAS</h1>
+
+        <ul class="nav nav-tabs mb-4">
+            <li class="nav-item">
+                <a class="nav-link {% if seccion_activa == 'historial' %}active{% endif %}" href="/">Historial Detallado</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if seccion_activa == 'ranking' %}active{% endif %}" href="/ranking" id="ranking-tab">Ranking Anual</a>
+            </li>
+        </ul>
+
+        {% if seccion_activa == 'historial' %}
+            <div class="card shadow">
+                <div class="card-header">
+                    <h5>Consulta de Historial Climático (01 Enero 2024 - Hoy) por Tienda</h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="/" id="historialForm">
+                        <div class="mb-4">
+                            <label for="tienda" class="form-label">🛒 **Seleccionar Tienda** (42 Tiendas)</label>
+                            <select class="form-select" id="tienda" name="tienda" required>
+                                <option value="" disabled {% if not tienda_seleccionada %}selected{% endif %}>Seleccione una tienda (Templo o Shopping)</option>
+                                {% for tipo, tiendas_lista in tiendas_agrupadas.items() %}
+                                    <optgroup label="{{ tipo }} ({{ tiendas_lista | length }} tiendas)">
+                                        {% for tienda in tiendas_lista %}
+                                            <option value="{{ tienda }}" {% if tienda_seleccionada == tienda %}selected{% endif %}>{{ tienda }}</option>
+                                        {% endfor %}
+                                    </optgroup>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="row g-4 mb-4">
+
+                            <div class="col-md-6">
+                                <div class="filter-section">
+                                    <h6 class="mb-3">🌡️ Filtros por Rangos Numéricos</h6>
+                                    <div class="row g-3">
+                                        <div class="col-md-6">
+                                            <label for="tmax_min" class="form-label form-label-sm">Temp. Máx. Mínima (°C)</label>
+                                            <input type="number" step="0.1" class="form-control form-control-sm" id="tmax_min" name="tmax_min"
+                                                   placeholder="Ej: 25.0" value="{{ filtros_aplicados.tmax_min }}">
+                                            <div class="form-text">Muestra días con **T. Máx. ≥** a este valor.</div>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label for="precip_min" class="form-label form-label-sm">Lluvia Mínima (mm)</label>
+                                            <input type="number" step="0.1" class="form-control form-control-sm" id="precip_min" name="precip_min"
+                                                   placeholder="Ej: 1.0" value="{{ filtros_aplicados.precip_min }}">
+                                            <div class="form-text">Muestra días con **Lluvia ≥** a este valor.</div>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label for="viento_min" class="form-label form-label-sm">Viento Mínimo (km/h)</label>
+                                            <input type="number" step="0.1" class="form-control form-control-sm" id="viento_min" name="viento_min"
+                                                   placeholder="Ej: 15.0" value="{{ filtros_aplicados.viento_min }}">
+                                            <div class="form-text">Muestra días con **Viento ≥** a este valor.</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="col-md-6">
+                                <div class="filter-section">
+                                    <h6 class="mb-3">☁️ Filtro por Condición Específica</h6>
+                                    <label for="condiciones_filtro" class="form-label">Condición Climática (Coincidencia Exacta)</label>
+                                    <select class="form-select" id="condiciones_filtro" name="condiciones_filtro">
+                                        <option value="TODAS" {% if filtros_aplicados.condiciones_filtro == 'TODAS' %}selected{% endif %}>TODAS las Condiciones</option>
+                                        <option value="Aguaceros Fuertes" {% if filtros_aplicados.condiciones_filtro == 'Aguaceros Fuertes' %}selected{% endif %}>Aguaceros Fuertes</option>
+                                        <option value="Tormenta" {% if filtros_aplicados.condiciones_filtro == 'Tormenta' %}selected{% endif %}>Tormenta</option>
+                                        <option value="Lluvia Moderada" {% if filtros_aplicados.condiciones_filtro == 'Lluvia Moderada' %}selected{% endif %}>Lluvia Moderada</option>
+                                        <option value="Llovizna" {% if filtros_aplicados.condiciones_filtro == 'Llovizna' %}selected{% endif %}>Llovizna</option>
+                                        <option value="Mayormente Despejado a Parcialmente Nublado" {% if filtros_aplicados.condiciones_filtro == 'Mayormente Despejado a Parcialmente Nublado' %}selected{% endif %}>Parcialmente Nublado</option>
+                                        <option value="Despejado" {% if filtros_aplicados.condiciones_filtro == 'Despejado' %}selected{% endif %}>Despejado</option>
+                                        <option value="Niebla / Escarcha" {% if filtros_aplicados.condiciones_filtro == 'Niebla / Escarcha' %}selected{% endif %}>Niebla / Escarcha</option>
+                                        <option value="Condiciones Variadas" {% if filtros_aplicados.condiciones_filtro == 'Condiciones Variadas' %}selected{% endif %}>Otras / Variadas</option>
+                                    </select>
+                                    <div class="form-text">Si seleccionas una condición, **solo** verás días etiquetados exactamente con esa condición.</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary w-100 mb-3">Consultar y Aplicar Filtros</button>
+                    </form>
+
+                    {% if error_message %}
+                        <div class="alert alert-danger mt-4">{{ error_message }}</div>
+                    {% endif %}
+
+                    {% if datos_historial %}
+                        <h4 class="mt-5">Resultados Filtrados para: <b>{{ tienda_seleccionada }}</b></h4>
+                        <p class="text-muted">Rango: 01/01/2024 hasta hace 5 días (límite de la API histórica). Días mostrados: **{{ datos_historial | length }}**</p>
+
+                        <form method="POST" action="/generar_pdf" target="_blank" class="mb-3">
+                            <input type="hidden" name="tienda_nombre" value="{{ tienda_seleccionada }}">
+                            <input type="hidden" name="datos_pdf_json" id="datos_pdf_input">
+                            <button type="submit" class="btn btn-success btn-sm">Generar PDF del Reporte</button>
+                        </form>
+
+                        <div class="table-responsive shadow">
+                            <table class="table table-sm table-striped table-hover">
+                                <thead class="sticky-header">
+                                    <tr class="table-dark">
+                                        <th>Fecha</th>
+                                        <th>T. Máx (°C)</th>
+                                        <th>T. Mín (°C)</th>
+                                        <th>Lluvia (mm)</th>
+                                        <th>Viento (km/h)</th>
+                                        <th>Nubosidad (%)</th>
+                                        <th>Condiciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for dia in datos_historial %}
+                                        <tr>
+                                            <td>{{ dia.fecha }}</td>
+                                            <td>{{ "%.1f" | format(dia.tmax | default(0)) }}</td>
+                                            <td>{{ "%.1f" | format(dia.tmin | default(0)) }}</td>
+                                            <td>
+                                                {% set precip = dia.precipitacion_mm | default(0) %}
+                                                {{ "%.2f" | format(precip) }}
+                                                {% if precip > 5 %}
+                                                    <span class="badge bg-primary badge-lluvia">Aguacero</span>
+                                                {% elif precip > 0.5 %}
+                                                    <span class="badge bg-info badge-lluvia">Lluvia</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>{{ "%.1f" | format(dia.viento_kmh | default(0)) }}</td>
+                                            <td>{{ "%.0f" | format(dia.nubosidad_perc | default(0)) }}</td>
+                                            <td>{{ dia.condiciones }}</td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <script>
+                            document.addEventListener('DOMContentLoaded', function() {
+                                const historialData = JSON.parse('{{ datos_historial | tojson | safe }}');
+                                document.getElementById('datos_pdf_input').value = JSON.stringify(historialData);
+                            });
+                        </script>
+
+                    {% elif tienda_seleccionada %}
+                         <div class="alert alert-info mt-4">
+                            No se encontraron datos climáticos que cumplan con los filtros para **{{ tienda_seleccionada }}** en el rango de 2024. Pruebe a relajar los filtros.
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        {% endif %}
+
+
+        {% if seccion_activa == 'ranking' %}
+            <div class="card shadow">
+                <div class="card-header bg-primary text-white">
+                    <h5>🏆 Ranking Anual de Temperaturas Máximas Promedio</h5>
+                </div>
+                <div class="card-body">
+                    {% if not ranking_data %}
+                        <div id="ranking-loading">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Cargando...</span>
+                            </div>
+                            <p class="mt-3 text-primary">Cargando ranking, por favor espere...</p>
+                        </div>
+                    {% elif ranking_data.ranking %}
+                        <div class="alert alert-warning">
+                            <p>⚠️ **ADVERTENCIA:** Esta consulta es **LENTA** (aproximadamente 30-45 segundos) ya que requiere obtener **{{ ranking_data.ranking | length }}** registros de datos históricos.</p>
+                            <p>El Ranking se calcula para el rango: **{{ ranking_data.fecha_inicio }}** hasta **{{ ranking_data.fecha_fin }}**.</p>
+                        </div>
+
+                        <div class="table-responsive shadow">
+                            <table class="table table-sm table-striped table-hover">
+                                <thead class="sticky-header">
+                                    <tr class="table-dark">
+                                        <th>Posición</th>
+                                        <th>Tienda</th>
+                                        <th>T. Máx. Promedio (°C)</th>
+                                        <th>Latitud</th>
+                                        <th>Longitud</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for tienda in ranking_data.ranking %}
+                                        <tr>
+                                            <td>
+                                                <b>{{ loop.index }}</b>
+                                                {% if loop.index == 1 %} 🥇
+                                                {% elif loop.index == 2 %} 🥈
+                                                {% elif loop.index == 3 %} 🥉
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                {% if tienda.tienda.startswith('Shopping') %}
+                                                    <span class="badge bg-success">{{ tienda.tienda }}</span>
+                                                {% else %}
+                                                    <span class="badge bg-info">{{ tienda.tienda }}</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                {% if tienda.tmax_promedio is not none %}
+                                                    <b>{{ "%.2f" | format(tienda.tmax_promedio) }} °C</b>
+                                                {% else %}
+                                                    <span class="text-danger">Error API/Dato Faltante</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>{{ tienda.lat }}</td>
+                                            <td>{{ tienda.lon }}</td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                         <div class="alert alert-danger">
+                            No se pudo calcular el ranking. Hubo errores de conexión o la API no devolvió datos para ninguna tienda.
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        {% endif %}
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

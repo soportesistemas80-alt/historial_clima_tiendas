@@ -1,0 +1,198 @@
+# app.py
+import os
+import io
+import requests
+from functools import wraps
+from flask import Flask, render_template, request, session, send_file
+from dotenv import load_dotenv
+# --- CAMBIO IMPORTANTE ---
+from xhtml2pdf import pisa 
+# --- FIN CAMBIO IMPORTANTE ---
+
+# Cargar variables de entorno desde el archivo .env
+load_dotenv()
+
+# --- Configuración y Inicialización (SIN CAMBIOS) ---
+app = Flask(__name__)
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "una_clave_secreta_de_fallback_segura")
+
+GEOCODING_API_KEY = os.environ.get("GEOAPIFY_KEY")
+VISUAL_CROSSING_API_KEY = os.environ.get("VISUAL_CROSSING_KEY")
+
+GEOCODING_API_URL = "https://api.geoapify.com/v1/geocode/search"
+WEATHER_API_URL = "https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline"
+
+
+# --- Funciones de Utilidad (SIN CAMBIOS) ---
+
+def geocode_address(address):
+    """Convierte una dirección en coordenadas (lat, lon) usando Geoapify."""
+    if not GEOCODING_API_KEY:
+        print("Error: GEOAPIFY_KEY no configurada.")
+        return None
+
+    params = {
+        "text": address,
+        "apiKey": GEOCODING_API_KEY,
+        "limit": 1
+    }
+    try:
+        resp = requests.get(GEOCODING_API_URL, params=params)
+        resp.raise_for_status()
+        data = resp.json()
+        features = data.get("features")
+        if features:
+            coords = features[0]["geometry"]["coordinates"]  # [lon, lat]
+            return coords[1], coords[0] # Retorna (lat, lon)
+    except Exception as e:
+        print("Error en geocoding:", e)
+    return None
+
+def login_required(f):
+    """Decorador para inicializar la sesión de historial si no existe."""
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if "historial" not in session:
+            session["historial"] = []
+        return f(*args, **kwargs)
+    return wrapper
+
+def format_weather_data(day_data, resolved_address, fecha, query):
+    """Formatea los datos brutos de la API en un diccionario presentable."""
+    return {
+        "Ubicación": resolved_address,
+        "Fecha": fecha,
+        "Temperatura Máxima": f"{day_data.get('tempmax', 'N/A')} °C",
+        "Temperatura Mínima": f"{day_data.get('tempmin', 'N/A')} °C",
+        "Sensación Térmica": f"{day_data.get('feelslike', 'N/A')} °C",
+        "Condiciones": day_data.get('conditions', "N/A"),
+        "Humedad": f"{day_data.get('humidity', 'N/A')} %",
+        "Viento": f"{day_data.get('windspeed', 'N/A')} km/h",
+        "Precipitaciones (mm)": day_data.get('precip', 0),
+        "Presión (hPa)": day_data.get('pressure', 'N/A'),
+        "Índice UV": day_data.get('uvindex', "N/A"),
+    }
+
+
+# --- Rutas de la Aplicación (index SIN CAMBIOS) ---
+
+@app.route("/", methods=["GET", "POST"])
+@login_required
+def index():
+    resultado = None
+    error = None
+
+    if not VISUAL_CROSSING_API_KEY or not GEOCODING_API_KEY:
+        error = "Error de configuración interna: Las claves API no están definidas en el servidor (.env)."
+        return render_template("index.html", error=error, historial=session["historial"])
+
+    if request.method == "POST":
+        metodo = request.form.get("metodo", "")
+        fecha = request.form.get("fecha", "").strip()
+
+        if not fecha:
+            error = "Por favor, ingresa la fecha."
+            return render_template("index.html", error=error, historial=session["historial"])
+
+        query = None
+        lat = lon = None
+
+        if metodo == "ciudad":
+            ciudad = request.form.get("ciudad", "").strip()
+            if not ciudad:
+                error = "Ingresa una ciudad."
+                return render_template("index.html", error=error, historial=session["historial"])
+            query = ciudad 
+
+        elif metodo == "direccion":
+            direccion = request.form.get("direccion", "").strip()
+            if not direccion:
+                error = "Ingresa una dirección."
+                return render_template("index.html", error=error, historial=session["historial"])
+            geo = geocode_address(direccion)
+            if geo is None:
+                error = "No se pudo convertir esa dirección a coordenadas válidas. Intenta ser más específico."
+                return render_template("index.html", error=error, historial=session["historial"])
+            lat, lon = geo
+            query = f"{lat},{lon}"
+
+        elif metodo == "coordenadas":
+            coord = request.form.get("coordenadas", "").strip()
+            try:
+                lat_str, lon_str = coord.replace(' ', '').split(",", 1)
+                lat = float(lat_str)
+                lon = float(lon_str)
+                query = f"{lat},{lon}"
+            except:
+                error = "Formato de coordenadas inválido. Usa: latitud, longitud (Ej: 3.36, -76.52)"
+                return render_template("index.html", error=error, historial=session["historial"])
+        else:
+            error = "Método de búsqueda no válido."
+            return render_template("index.html", error=error, historial=session["historial"])
+
+        url = f"{WEATHER_API_URL}/{query}/{fecha}?key={VISUAL_CROSSING_API_KEY}&unitGroup=metric&include=days"
+        
+        try:
+            r = requests.get(url)
+            r.raise_for_status()
+            data = r.json()
+            days = data.get("days")
+
+            if not days:
+                error = "No se encontraron datos históricos para esa ubicación y fecha. Verifica que la fecha sea válida."
+            else:
+                dia = days[0]
+                resolved_address = data.get("resolvedAddress", query)
+                
+                resultado = format_weather_data(dia, resolved_address, fecha, query)
+                
+                session["ultimo_clima"] = {
+                    "datos": resultado,
+                    "query": query,
+                    "fecha": fecha,
+                    "ubicacion": resolved_address
+                }
+                session["historial"].insert(0, {
+                    "consulta": query,
+                    "fecha": fecha
+                })
+                if len(session["historial"]) > 10:
+                    session["historial"].pop()
+                session.modified = True
+
+        except requests.exceptions.HTTPError as e:
+            status = e.response.status_code if e.response else "?"
+            if status == 400:
+                error = f"Error 400 (Petición Inválida). Verifica la fecha o el formato de la ubicación: {query}"
+            elif status in [401, 403]:
+                error = "Error de Autenticación. Verifica que la clave VISUAL_CROSSING_KEY en tu .env sea válida."
+            else:
+                error = f"Error HTTP: {status}. Ocurrió un problema consultando el clima."
+                
+        except Exception as e:
+            error = f"Ocurrió un error inesperado: {str(e)}"
+
+    return render_template("index.html", 
+        resultado=resultado, 
+        error=error, 
+        historial=session["historial"])
+
+
+@app.route("/descargar_pdf", methods=["POST"])
+def descargar_pdf():
+    """Ruta para generar y descargar el PDF usando xhtml2pdf."""
+    ultimo = session.get("ultimo_clima")
+    if not ultimo:
+        return "No hay datos de clima en la sesión para generar el PDF", 400
+
+    datos = ultimo["datos"]
+    ubicacion = ultimo["ubicacion"]
+    fecha = ultimo["fecha"]
+
+    # 1. Renderiza la plantilla HTML con los datos de Jinja
+    contexto = {
+        "resultado": datos,
+        "ubicacion": ubicacion,
+        "fecha": fecha
+    }
+    html_out = render_template('pdf_template.html',

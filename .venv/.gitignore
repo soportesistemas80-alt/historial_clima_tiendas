@@ -1,0 +1,12 @@
+# Archivo de entorno con claves secretas
+.env
+# Carpetas comunes de entorno virtual
+venv/
+.venv/
+Lib/
+Scripts/
+pyvenv.cfg
+CACHEDIR.TAG
+# Archivos de caché de Python
+__pycache__/
+*.pyc
