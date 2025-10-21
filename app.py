@@ -1,526 +1,411 @@
 import os
-import io
 import requests
-from functools import wraps
-from flask import Flask, render_template, request, session, send_file, redirect, url_for
+import json
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
-from datetime import datetime
-
-# --- Importaciones de ReportLab ---
-from reportlab.lib.pagesizes import A4
-from reportlab.platypus import SimpleDocTemplate, Table, Paragraph, Spacer, TableStyle
-from reportlab.lib import colors
+from flask import Flask, render_template, request, jsonify, send_file
+# ReportLab para generar PDF
+from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.platypus import Paragraph, SimpleDocTemplate
+from io import BytesIO
 
-# ------------------------------------------------
-
-# Cargar variables de entorno
+# Cargar variables de entorno (Asegúrate de tener un archivo .env si lo usas)
 load_dotenv()
 
-# --- Configuración y Inicialización ---
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "una_clave_secreta_de_fallback_segura")
 
-GEOCODING_API_KEY = os.environ.get("GEOAPIFY_KEY")
-VISUAL_CROSSING_API_KEY = os.environ.get("VISUAL_CROSSING_KEY")
+# Configuración de variables de entorno
+app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', 'default_secret_key')
 
-GEOCODING_API_URL = "https://api.geoapify.com/v1/geocode/search"
-WEATHER_API_URL = "https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline"
+# =========================================================================
+# 1. CONSOLIDACIÓN DE DATOS DE 42 TIENDAS (Shopping y Templo)
+# =========================================================================
+
+# Las coordenadas están en formato (Latitud, Longitud)
+TIENDAS_MAP = {
+    # 14 Tiendas Shopping
+    "Shopping 1": (7.059683654849175, -73.86856975814536),
+    "Shopping 2": (7.059768491566754, -73.8685599147996),
+    "Shopping 3": (7.059715996100198, -73.86874898531704),
+    "Shopping 4": (10.390839993695229, -75.47865011114159),
+    "Shopping 5": (11.243198751367304, -74.2100645944834),
+    "Shopping 6": (7.073912014064684, -73.16807685168257),
+    "Shopping 7": (6.984873261792733, -73.05045422597566),
+    "Shopping 8": (7.11908224576338, -73.12499126341542),
+    "Shopping 9": (7.063583168903841, -73.08545269225122),
+    "Shopping 10": (10.41616320505202, -75.52364301117757),
+    "Shopping 11": (10.401998109508904, -75.45978355813655),
+    "Shopping 13": (10.98819210780722, -74.77712600375727),
+    "Shopping 18": (5.34731430225259, -72.38879057865113),
+    "Shopping 22": (7.888542992988793, -72.50430970680809),
+
+    # 28 Tiendas Templo
+    "Templo 1": (3.452419735639639, -76.52978324939568),
+    "Templo 2": (3.4522853774177134, -76.529898454676),
+    "Templo 4": (4.538016339723241, -75.67406369068367),
+    "Templo 5": (3.368715416264726, -76.52363767081717),
+    "Templo 6": (3.8896123736819495, -77.07750078080207),
+    "Templo 8": (3.4856000188429475, -76.4975345879099),
+    "Templo 9": (3.5270710128823204, -76.29822708320997),
+    "Templo 10": (4.8142852710304105, -75.6937757603496),
+    "Templo 11": (3.4499690950433006, -76.53007453971138),
+    "Templo 13": (3.263903562976194, -76.53926833718572),
+    "Templo 14": (5.068244286496738, -75.51506847545048),
+    "Templo 16": (4.085044358531649, -76.19849390561589),
+    "Templo 17": (3.007623327632023, -76.48390139486145),
+    "Templo 18": (3.4554591168890325, -76.51771937930089),
+    "Templo 19": (4.444076234816372, -75.24018041918487),
+    "Templo 20": (3.4038129971746423, -76.51205234961651),
+    "Templo 23": (3.5846217572598627, -76.49387927985713),
+    "Templo 24": (3.9009535681896073, -76.29992062234696),
+    "Templo 26": (3.431348795529181, -76.48092776935766),
+    "Templo 27": (3.3253938372763114, -76.23473751945423),
+    "Templo 28": (2.4405990552966688, -76.60645440231042),
+    "Templo 29": (3.3763857352126685, -76.5474364784691),
+    "Templo 30": (3.4340788460477434, -76.53520635714665),
+    "Templo 31": (3.4847382695031377, -76.49658666150108),
+    "Templo 32": (3.4156413599943836, -76.5473246406779),
+    "Templo 33": (2.9274842823407994, -75.28997287249801),
+    "Templo 35": (3.540330538147451, -76.31075454232808),
+    "Templo 36": (4.750430032121445, -75.91210409550338),
+}
 
 
-# --- Funciones de Utilidad ---
+def agrupar_y_ordenar_tiendas(tiendas_map):
+    """Agrupa las tiendas en 'Shopping' y 'Templo' y las ordena numéricamente."""
+    agrupadas = {'Shopping': [], 'Templo': []}
 
-def geocode_address(address):
-    # Función para convertir dirección a lat/lon
-    if not GEOCODING_API_KEY:
-        return None
+    for nombre in tiendas_map.keys():
+        if nombre.startswith("Shopping"):
+            clave = "Shopping"
+        elif nombre.startswith("Templo"):
+            clave = "Templo"
+        else:
+            continue
 
-    params = {
-        "text": address,
-        "apiKey": GEOCODING_API_KEY,
-        "limit": 1
+        # Extraer el número para el orden
+        num_str = nombre.split()[-1]
+        try:
+            num = int(''.join(filter(str.isdigit, num_str)))
+        except ValueError:
+            num = 9999
+
+        agrupadas[clave].append((num, nombre))
+
+    # Ordenar por número
+    agrupadas['Shopping'].sort()
+    agrupadas['Templo'].sort()
+
+    # Devolver un diccionario limpio con el nombre
+    return {
+        'Shopping': [nombre for num, nombre in agrupadas['Shopping']],
+        'Templo': [nombre for num, nombre in agrupadas['Templo']]
     }
+
+
+TIENDAS_AGRUPADAS = agrupar_y_ordenar_tiendas(TIENDAS_MAP)
+
+
+# =========================================================================
+# 2. FUNCIONES DE LÓGICA DE NEGOCIO Y API (USANDO OPEN-METEO)
+# =========================================================================
+
+def obtener_historial_climatico(lat, lon):
+    """
+    Función para obtener datos climáticos usando Open-Meteo Historical Weather API.
+    El rango fijo es desde el 1 de enero de 2024 hasta hace 5 días.
+    Retorna una lista de diccionarios (datos diarios).
+    """
+    # Establecer fecha de inicio fija: 1 de enero de 2024
+    fecha_inicio = "2024-01-01"
+
+    # Calcular fecha de fin (Hoy - 5 días, para asegurar que los datos estén archivados)
+    hoy = datetime.now()
+    fecha_fin = (hoy - timedelta(days=5)).strftime('%Y-%m-%d')
+
+    # Manejar caso de fechas no válidas
     try:
-        resp = requests.get(GEOCODING_API_URL, params=params)
-        resp.raise_for_status()
-        data = resp.json()
-        features = data.get("features")
-        if features:
-            coords = features[0]["geometry"]["coordinates"]  # [lon, lat]
-            return coords[1], coords[0]  # Retorna (lat, lon)
-    except Exception as e:
-        print("Error en geocoding:", e)
-    return None
+        if datetime.strptime(fecha_inicio, '%Y-%m-%d') > datetime.strptime(fecha_fin, '%Y-%m-%d'):
+            return {
+                "error": f"La fecha de inicio ({fecha_inicio}) es posterior a la fecha de fin calculada ({fecha_fin}). No hay datos suficientes para mostrar."}
+    except ValueError:
+        return {"error": "Error interno al procesar las fechas. Verifique el formato."}
+
+    # URL de la API de Open-Meteo
+    url = (f"https://archive-api.open-meteo.com/v1/archive?"
+           f"latitude={lat}&longitude={lon}&start_date={fecha_inicio}&end_date={fecha_fin}"
+           f"&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max"
+           f"&temperature_unit=celsius&wind_speed_unit=kmh&precipitation_unit=mm&timezone=auto")
+
+    try:
+        response = requests.get(url, timeout=15)
+        response.raise_for_status()
+        data = response.json()
+
+        daily_data = data.get('daily', {})
+        n_days = len(daily_data.get('time', []))
+
+        datos_procesados = []
+
+        # Mapeo de WMO Weather Codes (WMO: World Meteorological Organization)
+        def map_wmo_code(code):
+            # Códigos oficiales WMO 4680
+            if code == 0:
+                return "Despejado"
+            elif 1 <= code <= 3:
+                return "Mayormente Despejado a Parcialmente Nublado"
+            elif 45 <= code <= 48:
+                return "Niebla / Escarcha"
+            elif 51 <= code <= 55:
+                return "Llovizna"
+            elif 61 <= code <= 65:
+                return "Lluvia Moderada"
+            elif 66 <= code <= 67:
+                return "Lluvia Congelante"
+            elif 80 <= code <= 82:
+                return "Aguaceros Fuertes"
+            elif 95 <= code <= 96:
+                return "Tormenta"
+            else:
+                return "Condiciones Variadas"
+
+        for i in range(n_days):
+            datos_procesados.append({
+                'fecha': daily_data['time'][i],
+                # Renombrar variables para coincidir con la estructura de la plantilla
+                'tmax': daily_data.get('temperature_2m_max', [None])[i],
+                'tmin': daily_data.get('temperature_2m_min', [None])[i],
+                'precipitacion_mm': daily_data.get('precipitation_sum', [None])[i],
+                'viento_kmh': daily_data.get('wind_speed_10m_max', [None])[i],
+                # Placeholder, ya que esta variable no está disponible en la API daily archive
+                'nubosidad_perc': 50,
+                'condiciones': map_wmo_code(daily_data.get('weather_code', [0])[i]),
+            })
+
+        return datos_procesados
+
+    except requests.exceptions.HTTPError as e:
+        return {
+            "error": f"Error API HTTP: {e.response.status_code}. Mensaje: {response.text}. Revisa la URL de la API."}
+    except requests.exceptions.RequestException as e:
+        return {"error": f"Error de conexión a la API: {e}. Revisa tu conexión a internet."}
 
 
-def login_required(f):
-    @wraps(f)
-    def wrapper(*args, **kwargs):
-        if "historial" not in session:
-            session["historial"] = []
-        if "theme" not in session:  # Inicializa el tema
-            session["theme"] = "light"
-        return f(*args, **kwargs)
-
-    return wrapper
-
-
-# --- FUNCIÓN DE DATOS DE CLIMA CON MÁS DETALLE (MODIFICADA) ---
-def format_weather_data(day_data, resolved_address, fecha_hora, query, has_hour):
+def aplicar_filtros(datos, filtros):
     """
-    Formatea los datos brutos de la API.
-    Añade un campo 'Fecha/Hora Display' para manejar la etiqueta.
+    Aplica filtros DINÁMICOS al historial climático día por día.
+    El filtro de condición climática es de coincidencia exacta y se aplica
+    antes que los filtros numéricos.
     """
+    if not datos or "error" in datos:
+        return datos
 
-    # NEW: Lógica para la etiqueta condicional de Fecha y Hora
-    fecha_key = "Fecha y Hora" if has_hour else "Fecha (Día Completo)"
+    datos_filtrados = []
 
-    data = {
-        "Ubicación": resolved_address,
-        fecha_key: fecha_hora,  # Usa la clave dinámica
-        "Condiciones": day_data.get('conditions', "N/A"),
+    # Obtener valores de filtro
+    tmax_min_val = float(filtros.get('tmax_min')) if filtros.get('tmax_min') else None
+    precip_min_val = float(filtros.get('precip_min')) if filtros.get('precip_min') else None
+    viento_min_val = float(filtros.get('viento_min')) if filtros.get('viento_min') else None
+    condiciones_filtro_val = filtros.get('condiciones_filtro')
 
-        # --- Temperatura y Sensación ---
-        "Temperatura": f"{day_data.get('temp', day_data.get('tempmax', 'N/A'))} °C",
-        "Sensación Térmica": f"{day_data.get('feelslike', 'N/A')} °C",
+    for dia in datos:
+        incluir = True
 
-        # --- Solo para el reporte de DÍA COMPLETO ('tempmax' solo existe si no se pasó la hora) ---
-        **({
-               "Máx. del Día": f"{day_data.get('tempmax', 'N/A')} °C",
-               "Mín. del Día": f"{day_data.get('tempmin', 'N/A')} °C",
-               "Sensación Máx.": f"{day_data.get('feelslikemax', 'N/A')} °C",
-               "Sensación Mín.": f"{day_data.get('feelslikemin', 'N/A')} °C",
-           } if 'tempmax' in day_data else {}),
+        # Usar valores de fallback (default)
+        tmax = dia.get('tmax', -100)
+        precip = dia.get('precipitacion_mm', 0)
+        viento = dia.get('viento_kmh', 0)
+        condicion_actual = dia.get('condiciones')
 
-        # --- Humedad y Punto de Rocío ---
-        "Humedad": f"{day_data.get('humidity', 'N/A')} %",
-        "Punto de Rocío (Dew)": f"{day_data.get('dew', 'N/A')} °C",
+        # 1. FILTRO DE CONDICIONES CLIMÁTICAS (COINCIDENCIA EXACTA Y EXCLUYENTE)
+        if condiciones_filtro_val and condiciones_filtro_val != "TODAS":
+            if condicion_actual != condiciones_filtro_val:
+                incluir = False
 
-        # --- Precipitaciones ---
-        "Precipitaciones (mm)": day_data.get('precip', 0),
-        "Prob. Precipitación": f"{day_data.get('precipprob', 'N/A')} %",
-        "Tipo de Precipitación": day_data.get('preciptype', ['Ninguno'])[0] if isinstance(day_data.get('preciptype'),
-                                                                                          list) else day_data.get(
-            'preciptype', 'Ninguno'),
-        "Cobertura Precip.": f"{day_data.get('precipcover', 'N/A')} %",
+        # 2. FILTROS NUMÉRICOS (Solo se aplican si el día ya no ha sido excluido por la condición)
 
-        # --- Viento ---
-        "Viento (Velocidad)": f"{day_data.get('windspeed', 'N/A')} km/h",
-        "Viento (Dirección)": f"{day_data.get('winddir', 'N/A')} °",
-        "Ráfaga de Viento": f"{day_data.get('windgust', 'N/A')} km/h",
+        # Filtro de Temperatura Máxima Mínima
+        if incluir and tmax_min_val is not None and tmax < tmax_min_val:
+            incluir = False
 
-        # --- Otros Parámetros ---
-        "Presión (hPa)": f"{day_data.get('pressure', 'N/A')} hPa",
-        "Visibilidad (km)": day_data.get('visibility', 'N/A'),
-        "Cobertura Nubes": f"{day_data.get('cloudcover', 'N/A')} %",
-        "Índice UV": day_data.get('uvindex', "N/A"),
+        # Filtro de Precipitación Mínima
+        if incluir and precip_min_val is not None and precip < precip_min_val:
+            incluir = False
 
-        # Campos de Sol/Luna (solo disponibles para el día completo)
-        **({
-               "Radiación Solar": f"{day_data.get('solarradiation', 'N/A')} W/m²",
-               "Energía Solar": f"{day_data.get('solarenergy', 'N/A')} MJ/m²",
-               "Hora de Salida del Sol": day_data.get('sunrise', 'N/A'),
-               "Hora de Puesta del Sol": day_data.get('sunset', 'N/A'),
-           } if 'sunrise' in day_data else {}),
+        # Filtro de Velocidad de Viento Mínima
+        if incluir and viento_min_val is not None and viento < viento_min_val:
+            incluir = False
 
-        # NEW: Variables internas para facilitar HTML/PDF
-        "__Fecha_Key__": fecha_key,
-        "__Fecha_Value__": fecha_hora
-    }
+        if incluir:
+            datos_filtrados.append(dia)
 
-    clean_data = {}
-    for k, v in data.items():
-        if v is not None and str(v).strip().upper() not in ('N/A', '', 'NONE', '0 KM/H', 'NINGUNO'):
-            clean_data[k] = str(v)
-
-    # El key dinámico ya está en el diccionario, solo necesitamos mover los tags internos al final
-    # La key "Ubicación" debe ser el input del usuario (resolved_address en este punto es el input original)
-
-    return clean_data
+    return datos_filtrados
 
 
-# --- FUNCIÓN DE GENERACIÓN DE PDF (MODIFICADA) ---
-def generar_pdf_reportlab(ubicacion, fecha_hora, datos_clima):
-    """Genera el PDF usando la librería ReportLab con el diseño mejorado y estilos corregidos."""
+def calcular_ranking_anual(tiendas_map):
+    """
+    Calcula el Ranking Anual basado en la Temperatura Máxima Promedio.
+    ADVERTENCIA: Esta función es LENTA (42 llamadas a API) y puede agotar límites.
+    """
+    ranking = []
 
-    buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4,
-                            leftMargin=40, rightMargin=40,
-                            topMargin=40, bottomMargin=40)
-    story = []
-    styles = getSampleStyleSheet()
+    # 1. Calcular rango de fechas
+    fecha_inicio = "2024-01-01"
+    hoy = datetime.now()
+    fecha_fin = (hoy - timedelta(days=5)).strftime('%Y-%m-%d')
 
-    styles.add(ParagraphStyle(
-        name='TitleBlue',
-        parent=styles['h1'],
-        fontName='Helvetica-Bold',
-        fontSize=20,
-        alignment=1,  # Centro
-        textColor=colors.HexColor('#3498db')
-    ))
+    # 2. Iterar sobre todas las tiendas
+    for nombre, (lat, lon) in tiendas_map.items():
+        # Obtener datos históricos para la tienda
+        datos_crudos = obtener_historial_climatico(lat, lon)
 
-    styles.add(ParagraphStyle(
-        name='SubtitleNormal',
-        parent=styles['Normal'],
-        fontSize=12,
-        alignment=0,  # Izquierda
-        textColor=colors.HexColor('#555555')
-    ))
+        if isinstance(datos_crudos, dict) and "error" in datos_crudos:
+            # Si hay un error de API para esta tienda, simplemente la saltamos
+            print(f"Error al obtener datos para {nombre}: {datos_crudos['error']}")
+            ranking.append({
+                'tienda': nombre,
+                'tmax_promedio': None,  # Usar None para indicar dato faltante
+                'lat': lat,
+                'lon': lon
+            })
+            continue
 
-    styles.add(ParagraphStyle(
-        name='FooterStyle',
-        parent=styles['Italic'],
-        fontSize=8,
-        alignment=2,  # Derecha
-        textColor=colors.HexColor('#95a5a6')
-    ))
+        # 3. Calcular el promedio de T. Máxima
+        if datos_crudos:
+            # Filtrar valores válidos de tmax
+            tmax_validos = [dia['tmax'] for dia in datos_crudos if dia.get('tmax') is not None]
 
-    # --- ENCABEZADO Y TÍTULO ---
-    story.append(Paragraph("Consulta de Clima Histórico", styles['TitleBlue']))
-    story.append(Spacer(1, 6))
+            if tmax_validos:
+                avg_tmax = sum(tmax_validos) / len(tmax_validos)
 
-    story.append(Table([[Paragraph("", styles['Normal'])]], colWidths=[doc.width], style=TableStyle([
-        ('LINEBELOW', (0, 0), (-1, -1), 1.5, colors.HexColor('#3498db'))
-    ])))
-    story.append(Spacer(1, 18))
+                ranking.append({
+                    'tienda': nombre,
+                    'tmax_promedio': round(avg_tmax, 2),
+                    'lat': lat,
+                    'lon': lon
+                })
+            else:
+                ranking.append({
+                    'tienda': nombre,
+                    'tmax_promedio': None,
+                    'lat': lat,
+                    'lon': lon
+                })
 
-    # Información de Ubicación y Fecha (MODIFICADO)
-    # Buscamos la clave dinámica almacenada para la fecha
-    fecha_key = datos_clima.get('__Fecha_Key__', 'Fecha y Hora')
-    fecha_valor = datos_clima.get('__Fecha_Value__', fecha_hora)
+    # 4. Ordenar el ranking (Descendente por T. Máx. Promedio, ignorando Nones)
+    ranking.sort(key=lambda x: x['tmax_promedio'] if x['tmax_promedio'] is not None else -float('inf'), reverse=True)
 
-    story.append(Paragraph(f"<b>Ubicación:</b> {ubicacion}", styles['SubtitleNormal']))
-    story.append(Paragraph(f"<b>{fecha_key}:</b> {fecha_valor}", styles['SubtitleNormal']))  # Usamos la clave dinámica
-    story.append(Spacer(1, 24))
-
-    # --- TABLA DE DATOS ---
-    data = [['Campo', 'Valor']]
-
-    # Excluimos las claves de resumen y las claves internas
-    excluded_keys = ['Ubicación', fecha_key, 'Condiciones', 'Temperatura', '__Fecha_Key__', '__Fecha_Value__']
-
-    for clave, valor in datos_clima.items():
-        if clave not in excluded_keys:
-            data.append([clave, str(valor)])
-
-    table_width = doc.width
-    col_widths = [table_width * 0.5, table_width * 0.5]
-
-    tabla = Table(data, colWidths=col_widths)
-
-    style = TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#3498db')),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#bdc3c7')),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.HexColor('#f0f0f0'), colors.HexColor('#ffffff')]),
-        ('FONTSIZE', (0, 1), (-1, -1), 10),
-        ('LEFTPADDING', (0, 0), (-1, -1), 6),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 6),
-    ])
-
-    tabla.setStyle(style)
-    story.append(Paragraph("<b>Detalles Completos del Clima</b>", styles['h3']))
-    story.append(Spacer(1, 6))
-    story.append(tabla)
-    story.append(Spacer(1, 36))
-
-    # --- PIE DE PÁGINA ---
-    footer_text = "Datos proporcionados por Visual Crossing (Clima) y Geoapify (Geocodificación). Generado por la aplicación Flask."
-    story.append(Paragraph(footer_text, styles['FooterStyle']))
-
-    doc.build(story)
-    buffer.seek(0)
-    return send_file(buffer,
-                     as_attachment=True,
-                     download_name=f"reporte_clima_{fecha_valor.replace(' ', '_').replace(':', '')}.pdf",
-                     mimetype="application/pdf")
+    return {'ranking': ranking, 'fecha_inicio': fecha_inicio, 'fecha_fin': fecha_fin}
 
 
-# --- Rutas de la Aplicación (MODIFICADO) ---
-
-@app.route("/toggle_theme", methods=["POST"])
-def toggle_theme():
-    """Alterna entre tema claro y oscuro y redirige al inicio."""
-    session["theme"] = "dark" if session.get("theme") == "light" else "light"
-    # Mantiene la pestaña actual
-    return redirect(url_for('index', tab=request.form.get('current_tab', 'consulta')))
-
+# =========================================================================
+# 3. RUTAS FLASK
+# =========================================================================
 
 @app.route("/", methods=["GET", "POST"])
-@login_required
-def index():
-    resultado = None
-
-    # 1. Recuperar y limpiar notificaciones de sesión (Mecanismo Toast)
-    notification_type = session.pop("notification_type", None)
-    notification_message = session.pop("notification_message", None)
-
-    if not VISUAL_CROSSING_API_KEY or not GEOCODING_API_KEY:
-        notification_type = "error"
-        notification_message = "Error de configuración interna: Las claves API no están definidas en el servidor (archivo .env)."
-
-        return render_template("index.html",
-                               historial=session["historial"],
-                               theme=session["theme"],
-                               notification_type=notification_type,
-                               notification_message=notification_message,
-                               today=datetime.now().strftime("%Y-%m-%d"))
+def historial_detallado():
+    """Ruta principal para la consulta de historial climático día por día."""
+    tienda_seleccionada = None
+    datos_historial = None
+    error_message = None
+    # Valores por defecto para mantener los campos del formulario
+    filtros_aplicados = {'tmax_min': '', 'precip_min': '', 'viento_min': '', 'condiciones_filtro': 'TODAS'}
 
     if request.method == "POST":
-        metodo = request.form.get("metodo", "")
-        fecha = request.form.get("fecha", "").strip()
-        hora = request.form.get("hora", "").strip()
+        tienda_seleccionada = request.form.get("tienda")
 
-        # Determina si hay hora para la etiqueta condicional (NEW)
-        has_hour = bool(hora)
+        # 1. Obtener y almacenar los filtros dinámicos
+        filtros_aplicados = {
+            'tmax_min': request.form.get("tmax_min", ""),
+            'precip_min': request.form.get("precip_min", ""),
+            'viento_min': request.form.get("viento_min", ""),
+            'condiciones_filtro': request.form.get("condiciones_filtro", "TODAS"),
+        }
 
-        if not fecha:
-            session["notification_type"] = "error"
-            session["notification_message"] = "Por favor, ingresa la fecha."
-            return redirect(url_for('index', tab='consulta'))
+        if tienda_seleccionada in TIENDAS_MAP:
+            lat, lon = TIENDAS_MAP[tienda_seleccionada]
 
-        # --- VALIDACIÓN DE FECHA FUTURA ---
-        try:
-            now = datetime.now().strftime("%Y-%m-%d %H:%M")
+            # Obtener datos crudos (rango 2024)
+            datos_crudos = obtener_historial_climatico(lat, lon)
 
-            if has_hour:
-                fecha_hora_str = f"{fecha} {hora}"
-                fecha_obj = datetime.strptime(fecha_hora_str, "%Y-%m-%d %H:%M")
-                now_obj = datetime.strptime(now, "%Y-%m-%d %H:%M")
+            if isinstance(datos_crudos, dict) and "error" in datos_crudos:
+                error_message = datos_crudos["error"]
             else:
-                fecha_obj = datetime.strptime(fecha, "%Y-%m-%d")
-                now_obj = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-
-            if fecha_obj > now_obj:
-                session["notification_type"] = "error"
-                session[
-                    "notification_message"] = "¡Error de fecha! No se puede consultar el clima histórico para una fecha u hora futura."
-                return redirect(url_for('index', tab='consulta'))
-
-        except ValueError:
-            session["notification_type"] = "error"
-            session["notification_message"] = "Formato de fecha u hora inválido."
-            return redirect(url_for('index', tab='consulta'))
-
-        query = None
-        lat = None
-        lon = None
-        original_input = None
-
-        # --- LÓGICA DE GEOCODIFICACIÓN Y VALIDACIÓN ESTRICTA DE ENTRADA ---
-        if metodo == "ciudad":
-            ciudad = request.form.get("ciudad", "").strip()
-            if not ciudad:
-                session["notification_type"] = "error"
-                session["notification_message"] = "El campo 'Ciudad/Región' es obligatorio."
-                return redirect(url_for('index', tab='consulta'))
-
-            # Validación estricta para Ciudad: No debe parecer dirección
-            if any(char.lower() in ciudad.lower() for char in
-                   ['#', 'n°', 'cl.', 'calle', 'carrera', 'avenida', 'av.', 'st.', 'ave.', 'km', 'no.']):
-                session["notification_type"] = "error"
-                session[
-                    "notification_message"] = "Para entradas que parecen una dirección (contienen #, Cl, Av, etc.), por favor selecciona el método 'Dirección'."
-                return redirect(url_for('index', tab='consulta'))
-
-            original_input = ciudad  # Usamos el input original como ubicación del reporte
-
-            # Intentar geocodificar la ciudad. Si funciona, se usa lat/lon. Si no, se usa el nombre.
-            geo = geocode_address(ciudad)
-            if geo is not None:
-                lat, lon = geo
-                query = f"{lat},{lon}"
-            else:
-                # Si Geoapify falla, usamos el nombre de la ciudad/región directamente en Visual Crossing
-                query = ciudad
-
-        elif metodo == "direccion":
-            direccion = request.form.get("direccion", "").strip()
-            if not direccion:
-                session["notification_type"] = "error"
-                session["notification_message"] = "El campo 'Dirección' es obligatorio."
-                return redirect(url_for('index', tab='consulta'))
-
-            if len(direccion.split()) < 2 or direccion.lower() in ['cali', 'bogota', 'lima', 'mexico']:
-                session["notification_type"] = "error"
-                session[
-                    "notification_message"] = "Para búsquedas de 'Dirección' necesitas incluir calle/carrera. Si es solo una ciudad, usa el método 'Ciudad/Región'."
-                return redirect(url_for('index', tab='consulta'))
-
-            original_input = direccion
-            geo = geocode_address(direccion)
-            if geo is None:
-                session["notification_type"] = "error"
-                session[
-                    "notification_message"] = "No se pudo convertir esa dirección a coordenadas válidas. Intenta ser más específico."
-                return redirect(url_for('index', tab='consulta'))
-            lat, lon = geo
-            query = f"{lat},{lon}"
-
-        elif metodo == "coordenadas":
-            coord = request.form.get("coordenadas", "").strip()
-            if not coord:
-                session["notification_type"] = "error"
-                session["notification_message"] = "El campo 'Coordenadas' es obligatorio."
-                return redirect(url_for('index', tab='consulta'))
-
-            original_input = coord
-            try:
-                lat_str, lon_str = coord.replace(' ', '').split(",", 1)
-                lat = float(lat_str)
-                lon = float(lon_str)
-                query = f"{lat},{lon}"
-            except:
-                session["notification_type"] = "error"
-                session[
-                    "notification_message"] = "Formato de coordenadas inválido. Usa: latitud, longitud (Ej: 3.36, -76.52)"
-                return redirect(url_for('index', tab='consulta'))
-
+                # 2. Aplicar filtros dinámicos
+                datos_historial = aplicar_filtros(datos_crudos, filtros_aplicados)
         else:
-            session["notification_type"] = "error"
-            session["notification_message"] = "Método de búsqueda no válido."
-            return redirect(url_for('index', tab='consulta'))
+            error_message = "Tienda seleccionada no válida."
 
-        # Construcción de la URL de consulta
-        fecha_consulta = fecha
-        if has_hour:
-            fecha_consulta = f"{fecha}T{hora}:00"
-            include_param = "hours"
-        else:
-            include_param = "days,alerts,current,events"
-
-        api_query = query
-        url = f"{WEATHER_API_URL}/{api_query}/{fecha_consulta}?key={VISUAL_CROSSING_API_KEY}&unitGroup=metric&include={include_param}"
-
-        try:
-            r = requests.get(url)
-            r.raise_for_status()
-            data = r.json()
-
-            day_data = None
-            fecha_resultado = None
-
-            if include_param == "hours":
-                if data.get("days") and data["days"][0].get("hours"):
-                    day_data = data["days"][0]["hours"][0]
-                    fecha_resultado = f"{fecha} {hora}"
-            else:
-                if data.get("days"):
-                    day_data = data["days"][0]
-                    fecha_resultado = fecha
-
-            if day_data is None:
-                session["notification_type"] = "error"
-                session[
-                    "notification_message"] = "No se encontraron datos históricos para esa ubicación y fecha. Verifica que la fecha sea válida o que la hora exista."
-            else:
-                # --- CORRECCIÓN SOLICITADA: Usar el INPUT original del usuario como Ubicación ---
-                report_address = original_input
-
-                # Formatear datos, pasando el nuevo flag
-                resultado = format_weather_data(day_data, report_address, fecha_resultado, api_query, has_hour)
-
-                # 2. Almacenar resultado en sesión para el PDF actual
-                session["ultimo_clima"] = {
-                    "datos": resultado,
-                    "ubicacion": report_address,
-                    "fecha_hora": resultado["__Fecha_Value__"],  # Usar el valor correcto para el nombre del archivo
-                }
-
-                # 3. Almacenar resultado COMPLETO en el historial
-                hora_registro = datetime.now().strftime("%H:%M:%S")
-                session["historial"].insert(0, {
-                    "consulta": f"{report_address} ({resultado['__Fecha_Value__']})",
-                    "hora_registro": hora_registro,
-                    "data_pdf": resultado,
-                    "ubicacion": report_address,
-                    "fecha_hora": resultado["__Fecha_Value__"],
-                })
-                session.modified = True
-
-                session["notification_type"] = "success"
-                session["notification_message"] = "¡Consulta exitosa! El reporte está listo."
-
-        except requests.exceptions.HTTPError as e:
-            status = e.response.status_code if e.response else "?"
-
-            session["notification_type"] = "error"
-            if status == 400:
-                session[
-                    "notification_message"] = f"Error 400 (Petición Inválida). Verifica la fecha/hora o el formato de la ubicación."
-            elif status in [401, 403]:
-                session[
-                    "notification_message"] = "Error de Autenticación. Verifica que la clave VISUAL_CROSSING_KEY en tu .env sea válida."
-            else:
-                session["notification_message"] = f"Error HTTP: {status}. Ocurrió un problema consultando el clima."
-
-        except Exception as e:
-            session["notification_type"] = "error"
-            session["notification_message"] = f"Ocurrió un error inesperado: {str(e)}"
-
-        return redirect(url_for('index', tab='reporte'))
-
-    # Si se llega por GET (incluyendo recarga), cargar el último resultado
-    if "ultimo_clima" in session:
-        resultado = session["ultimo_clima"]["datos"]
+    # Intentar mantener la selección de la tienda si hay datos de historial
+    if datos_historial is None and 'tienda' in request.form:
+        tienda_seleccionada = request.form.get("tienda")
 
     return render_template("index.html",
-                           resultado=resultado,
-                           historial=session["historial"],
-                           theme=session["theme"],
-                           today=datetime.now().strftime("%Y-%m-%d"),
-                           notification_type=notification_type,
-                           notification_message=notification_message)
+                           tiendas_agrupadas=TIENDAS_AGRUPADAS,
+                           tienda_seleccionada=tienda_seleccionada,
+                           datos_historial=datos_historial,
+                           error_message=error_message,
+                           filtros_aplicados=filtros_aplicados,
+                           seccion_activa="historial")
 
 
-@app.route("/descargar_pdf", methods=["POST"])
-def descargar_pdf():
-    """Ruta para generar y descargar el PDF del último reporte (Reporte Tab)."""
-    ultimo = session.get("ultimo_clima")
-    if not ultimo:
-        session["notification_type"] = "error"
-        session["notification_message"] = "No hay datos de clima recientes para generar el PDF."
-        return redirect(url_for('index', tab='reporte'))
+@app.route("/ranking", methods=["GET"])
+def ranking_anual():
+    """Ruta para la pestaña de Ranking anual."""
 
-    datos = ultimo["datos"]
-    ubicacion = ultimo["ubicacion"]
-    fecha_hora = ultimo["fecha_hora"]  # Usado solo para el nombre del archivo
+    # LLAMADA LENTA: ESTA FUNCIÓN HARÁ 42 LLAMADAS A LA API.
+    ranking_data = calcular_ranking_anual(TIENDAS_MAP)
 
-    return generar_pdf_reportlab(ubicacion, fecha_hora, datos)
+    return render_template("index.html",
+                           tiendas_agrupadas=TIENDAS_AGRUPADAS,
+                           ranking_data=ranking_data,
+                           seccion_activa="ranking")
 
 
-@app.route("/descargar_historial_pdf/<int:index>", methods=["POST"])
-def descargar_historial_pdf(index):
-    """Ruta para generar y descargar el PDF de un elemento del historial, usando su índice."""
+@app.route("/generar_pdf", methods=["POST"])
+def generar_pdf():
+    """Genera el PDF a partir de los datos filtrados en el frontend."""
+    datos_pdf_json = request.form.get('datos_pdf_json')
+    tienda_nombre = request.form.get('tienda_nombre')
 
-    historial = session.get("historial")
-    if not historial or index < 0 or index >= len(historial):
-        session["notification_type"] = "error"
-        session["notification_message"] = "Error: El índice de historial para la descarga es inválido."
-        return redirect(url_for('index', tab='historial'))
+    try:
+        datos_historial = json.loads(datos_pdf_json)
+    except json.JSONDecodeError:
+        return "Error al decodificar los datos del historial.", 400
 
-    item = historial[index]
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter,
+                            title=f"Reporte Climático {tienda_nombre}")
 
-    datos = item["data_pdf"]
-    ubicacion = item["ubicacion"]
-    fecha_hora = item["fecha_hora"]
+    styles = getSampleStyleSheet()
+    styles.add(ParagraphStyle(name='Data', fontSize=10, leading=12))
 
-    return generar_pdf_reportlab(ubicacion, fecha_hora, datos)
+    story = []
+    story.append(Paragraph(f"<b>Reporte Climático Detallado para: {tienda_nombre}</b>", styles['Heading1']))
+    story.append(
+        Paragraph(f"Rango de fechas consultado: Desde el 1 de enero de 2024 hasta hace 5 días.", styles['Normal']))
+    story.append(Paragraph(f"Generado el: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", styles['Normal']))
+    story.append(Paragraph(f"Días incluidos en el reporte (tras filtros): {len(datos_historial)}", styles['Normal']))
+    story.append(Paragraph("<br/>", styles['Normal']))
 
+    for dia in datos_historial:
+        linea = (f"<b>Fecha:</b> {dia.get('fecha')} | <b>T Max/Min:</b> {dia.get('tmax')}/{dia.get('tmin')} °C | "
+                 f"<b>Lluvia:</b> {dia.get('precipitacion_mm')} mm | <b>Viento:</b> {dia.get('viento_kmh')} km/h | "
+                 f"<b>Condiciones:</b> {dia.get('condiciones', 'N/A')}")
+        story.append(Paragraph(linea, styles['Data']))
 
-# --- RUTA: VACIAR HISTORIAL ---
-@app.route("/vaciar_historial", methods=["POST"])
-def vaciar_historial():
-    """Vacía por completo el historial de consultas de la sesión."""
-    session["historial"] = []
-    session.modified = True
-    session["notification_type"] = "info"
-    session["notification_message"] = "El historial de consultas ha sido vaciado."
-    session.pop("ultimo_clima", None)
-    return redirect(url_for('index', tab='historial'))
+    doc.build(story)
+
+    buffer.seek(0)
+
+    return send_file(
+        buffer,
+        as_attachment=True,
+        download_name=f"Reporte_Climatico_{tienda_nombre}_{datetime.now().strftime('%Y%m%d')}.pdf",
+        mimetype='application/pdf'
+    )
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    app.run(debug=True)

@@ -1,447 +1,260 @@
 <!DOCTYPE html>
-<html lang="es" data-bs-theme="{{ theme }}">
+<html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Consulta de Clima Histórico</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    <title>Historial Climático EL TEMPLO DE LA MODA SAS</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        /* Estilo base para el cuerpo */
-        body {
-            background-color: var(--bs-body-bg);
-            color: var(--bs-body-color);
-            transition: background-color 0.3s, color 0.3s;
-        }
-        /* Estilo para el contenedor principal */
-        .container {
-            max-width: 900px;
-            margin-top: 50px;
-            margin-bottom: 50px;
-        }
-        /* Estilo para los títulos */
-        .app-title {
-            color: #3498db; /* Azul corporativo */
-            font-weight: 700;
-        }
-        /* Estilo para las tarjetas del historial */
-        .historial-item {
-            cursor: pointer;
-            transition: all 0.2s;
-            border-left: 5px solid #3498db;
-        }
-        .historial-item:hover {
-            background-color: var(--bs-light-bg-subtle);
-            transform: translateX(5px);
-        }
-        /* Estilo para el botón de tema */
-        .theme-toggle-btn {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            z-index: 1000;
-        }
-        /* Estilo para el spinner de carga */
-        .loading-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.7);
-            display: none; /* Oculto por defecto */
+        body { background-color: #f8f9fa; }
+        .container { margin-top: 30px; margin-bottom: 50px; max-width: 1100px; }
+        /* Estilo para las pestañas de navegación */
+        .nav-link.active { font-weight: bold; border-bottom: 3px solid #007bff; color: #007bff !important; }
+        .card-header { background-color: #e9ecef; }
+        /* Estilo para la tabla de historial (scroll) */
+        .table-responsive { max-height: 600px; overflow-y: auto; }
+        .sticky-header { position: sticky; top: 0; background: white; z-index: 10; }
+        /* Badges de clima */
+        .bg-primary.badge-lluvia { background-color: #007bff !important; }
+        .bg-info.badge-lluvia { background-color: #17a2b8 !important; }
+        /* Estilos de las secciones de filtro */
+        .filter-section { padding: 15px; border: 1px solid #dee2e6; border-radius: 5px; height: 100%; }
+        .filter-section h6 { color: #495057; }
+        /* Estilos del área de carga del ranking */
+        #ranking-loading {
+            display: flex;
+            flex-direction: column;
             align-items: center;
             justify-content: center;
-            z-index: 2000;
-        }
-        /* Estilos específicos del modo oscuro */
-        [data-bs-theme="dark"] .historial-item {
-            border-left-color: #5d9cec;
-        }
-        /* Estilo para los radio buttons solicitados */
-        .radio-pills .btn {
-            border-radius: 0.5rem;
-            border: 1px solid var(--bs-border-color);
-            transition: all 0.2s;
-        }
-        .radio-pills .btn:hover {
-            background-color: var(--bs-light-bg-subtle);
-        }
-        .radio-pills input[type="radio"]:checked + label {
-            background-color: var(--bs-primary);
-            color: white;
-            border-color: var(--bs-primary);
+            min-height: 300px;
+            text-align: center;
         }
     </style>
 </head>
 <body>
+    <div class="container">
+        <h1 class="text-center mb-4">Historial y Ranking Climático - EL TEMPLO DE LA MODA SAS</h1>
 
-<div id="loading-overlay" class="loading-overlay">
-    <div class="d-flex flex-column align-items-center">
-        <div class="spinner-border text-light" role="status" style="width: 3rem; height: 3rem;">
-            <span class="visually-hidden">Cargando...</span>
-        </div>
-        <p class="text-white mt-3">Consultando datos históricos...</p>
-    </div>
-</div>
+        <ul class="nav nav-tabs mb-4">
+            <li class="nav-item">
+                <a class="nav-link {% if seccion_activa == 'historial' %}active{% endif %}" href="/">Historial Detallado</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if seccion_activa == 'ranking' %}active{% endif %}" href="/ranking" id="ranking-tab">Ranking Anual</a>
+            </li>
+        </ul>
 
-<div class="toast-container position-fixed bottom-0 end-0 p-3">
-    <div id="appToast" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
-        <div class="toast-header">
-            <i id="toastIcon" class="me-2"></i>
-            <strong id="toastTitle" class="me-auto"></strong>
-            <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
-        </div>
-        <div id="toastBody" class="toast-body">
-            </div>
-    </div>
-</div>
-
-<div class="container">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1 class="app-title">
-            <i class="fas fa-cloud-sun me-2"></i>
-            Clima Histórico
-        </h1>
-        <form method="POST" action="{{ url_for('toggle_theme') }}" class="m-0 theme-toggle-btn">
-            <input type="hidden" name="current_tab" id="current_tab_input">
-            <button type="submit" class="btn btn-outline-secondary btn-sm"
-                    data-bs-toggle="tooltip" data-bs-placement="bottom"
-                    title="Alternar Modo Oscuro/Claro">
-                {% if theme == 'dark' %}
-                    <i class="fas fa-sun"></i> {% else %}
-                    <i class="fas fa-moon"></i> {% endif %}
-            </button>
-        </form>
-    </div>
-
-    <div class="card shadow-lg p-0">
-        <div class="card-header p-0">
-            <ul class="nav nav-tabs" id="myTab" role="tablist">
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link active" id="consulta-tab" data-bs-toggle="tab"
-                            data-bs-target="#consulta" type="button" role="tab"
-                            aria-controls="consulta" aria-selected="true"><i class="fas fa-search me-1"></i> Consulta
-                    </button>
-                </li>
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link" id="reporte-tab" data-bs-toggle="tab"
-                            data-bs-target="#reporte" type="button" role="tab"
-                            aria-controls="reporte" aria-selected="false"><i class="fas fa-file-pdf me-1"></i> Reporte
-                    </button>
-                </li>
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link" id="historial-tab" data-bs-toggle="tab"
-                            data-bs-target="#historial" type="button" role="tab"
-                            aria-controls="historial" aria-selected="false"><i class="fas fa-history me-1"></i> Historial ({{ historial | length }})
-                    </button>
-                </li>
-            </ul>
-        </div>
-
-        <div class="card-body p-4">
-            <div class="tab-content" id="myTabContent">
-
-                <div class="tab-pane fade show active" id="consulta" role="tabpanel" aria-labelledby="consulta-tab">
-                    <form method="POST" action="{{ url_for('index') }}" id="consulta-form">
-
-                        <h5 class="mb-3 text-primary"><i class="far fa-calendar-alt me-1"></i> 1. Especifica Fecha y Hora</h5>
-                        <div class="row g-3 mb-4">
-                            <div class="col-md-6">
-                                <label for="fecha" class="form-label">Fecha del evento histórico</label>
-                                <input type="date" class="form-control" id="fecha" name="fecha" max="{{ today }}" required
-                                       value="{{ request.form.get('fecha', '') }}">
-                                <div class="form-text text-muted">La fecha no puede ser futura.</div>
-                            </div>
-                            <div class="col-md-6">
-                                <label for="hora" class="form-label">Hora (Opcional)</label>
-                                <input type="time" class="form-control" id="hora" name="hora"
-                                       value="{{ request.form.get('hora', '') }}">
-                                <div class="form-text text-muted">Si no se especifica, se consulta el día completo.</div>
-                            </div>
-                        </div>
-
-
-                        <h5 class="mt-4 mb-3 text-primary"><i class="fas fa-map-marker-alt me-1"></i> 2. Selecciona el método de ubicación</h5>
-
-                        <div class="radio-pills btn-group mb-4 w-100" role="group" aria-label="Seleccionar método de ubicación">
-                            <input type="radio" class="btn-check" name="metodo" id="radioCiudad" value="ciudad" onchange="cambiarCampos()"
-                                {% if request.form.get('metodo') == 'ciudad' or not request.form.get('metodo') %}checked{% endif %}>
-                            <label class="btn btn-outline-primary" for="radioCiudad"><i class="fas fa-building me-1"></i> Ciudad / Región</label>
-
-                            <input type="radio" class="btn-check" name="metodo" id="radioDireccion" value="direccion" onchange="cambiarCampos()"
-                                {% if request.form.get('metodo') == 'direccion' %}checked{% endif %}>
-                            <label class="btn btn-outline-primary" for="radioDireccion"><i class="fas fa-road me-1"></i> Dirección Específica</label>
-
-                            <input type="radio" class="btn-check" name="metodo" id="radioCoordenadas" value="coordenadas" onchange="cambiarCampos()"
-                                {% if request.form.get('metodo') == 'coordenadas' %}checked{% endif %}>
-                            <label class="btn btn-outline-primary" for="radioCoordenadas"><i class="fas fa-globe me-1"></i> Coordenadas</label>
-                        </div>
-
-
-                        <div id="campoCiudad" class="mb-3">
-                            <label for="ciudad" class="form-label">Ejemplo: Cali, Valle del Cauca</label>
-                            <input type="text" class="form-control" id="ciudad" name="ciudad" placeholder="Ingresa la ciudad o región (Ej: Cali, Colombia)"
-                                value="{{ request.form.get('ciudad', '') }}">
-                        </div>
-
-                        <div id="campoDireccion" class="mb-3" style="display:none;">
-                            <label for="direccion" class="form-label">Ejemplo: Cl. 14 #6-71, COMUNA 3, Cali</label>
-                            <input type="text" class="form-control" id="direccion" name="direccion" placeholder="Ingresa la dirección completa y específica"
-                                value="{{ request.form.get('direccion', '') }}">
-                        </div>
-
-                        <div id="campoCoordenadas" class="mb-3" style="display:none;">
-                            <label for="coordenadas" class="form-label">Ejemplo: 3.4516, -76.5320</label>
-                            <input type="text" class="form-control" id="coordenadas" name="coordenadas" placeholder="Ingresa Latitud, Longitud"
-                                value="{{ request.form.get('coordenadas', '') }}">
-                        </div>
-
-
-                        <div class="d-grid mt-4">
-                            <button type="submit" class="btn btn-primary btn-lg" id="submit-btn">
-                                <i class="fas fa-history me-2"></i> Consultar Clima Histórico
-                            </button>
-                        </div>
-                    </form>
+        {% if seccion_activa == 'historial' %}
+            <div class="card shadow">
+                <div class="card-header">
+                    <h5>Consulta de Historial Climático (01 Enero 2024 - Hoy) por Tienda</h5>
                 </div>
-
-                <div class="tab-pane fade" id="reporte" role="tabpanel" aria-labelledby="reporte-tab">
-
-                    {% if resultado %}
-                    <div id="resultado-card" class="card shadow-sm border-0">
-                        <div class="card-header bg-primary text-white">
-                            <h4 class="mb-0"><i class="fas fa-chart-bar me-2"></i> Reporte Generado</h4>
-                        </div>
-                        <div class="card-body">
-
-                            <div class="row mb-4">
-                                <div class="col-md-6">
-                                    <p class="mb-1"><strong>Ubicación:</strong> {{ resultado.get('Ubicación', 'N/A') }}</p>
-                                    <p class="mb-1">
-                                        <strong>{{ resultado.get('__Fecha_Key__', 'Fecha y Hora') }}:</strong>
-                                        {{ resultado.get('__Fecha_Value__', 'N/A') }}
-                                    </p>
-                                </div>
-                                <div class="col-md-6 text-md-end">
-                                    <p class="mb-1"><strong>Condiciones:</strong> <span class="badge text-bg-info">{{ resultado.get('Condiciones', 'N/A') }}</span></p>
-                                    <p class="mb-1"><strong>Temperatura:</strong> <span class="badge text-bg-warning">{{ resultado.get('Temperatura', 'N/A') }}</span></p>
-                                </div>
-                            </div>
-
-                            <h5 class="mt-4 mb-3 text-primary"><i class="fas fa-table me-1"></i> Detalles Completos</h5>
-                            <div class="table-responsive">
-                                <table class="table table-striped table-hover table-bordered align-middle">
-                                    <thead class="table-dark">
-                                        <tr>
-                                            <th scope="col">Campo</th>
-                                            <th scope="col">Valor</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {% for key, value in resultado.items() %}
-                                            {% set is_meta_key = key in ['Ubicación', 'Condiciones', 'Temperatura', '__Fecha_Key__', '__Fecha_Value__'] %}
-                                            {% set is_fecha_key = key == resultado.get('__Fecha_Key__') %}
-
-                                            {# Solo mostramos si no es una de las claves de resumen o las claves internas #}
-                                            {% if not is_meta_key and not is_fecha_key %}
-                                            <tr>
-                                                <th scope="row">{{ key }}</th>
-                                                <td>{{ value }}</td>
-                                            </tr>
-                                            {% endif %}
+                <div class="card-body">
+                    <form method="POST" action="/" id="historialForm">
+                        <div class="mb-4">
+                            <label for="tienda" class="form-label">🛒 **Seleccionar Tienda** (42 Tiendas)</label>
+                            <select class="form-select" id="tienda" name="tienda" required>
+                                <option value="" disabled {% if not tienda_seleccionada %}selected{% endif %}>Seleccione una tienda (Templo o Shopping)</option>
+                                {% for tipo, tiendas_lista in tiendas_agrupadas.items() %}
+                                    <optgroup label="{{ tipo }} ({{ tiendas_lista | length }} tiendas)">
+                                        {% for tienda in tiendas_lista %}
+                                            <option value="{{ tienda }}" {% if tienda_seleccionada == tienda %}selected{% endif %}>{{ tienda }}</option>
                                         {% endfor %}
-                                    </tbody>
-                                </table>
+                                    </optgroup>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="row g-4 mb-4">
+
+                            <div class="col-md-6">
+                                <div class="filter-section">
+                                    <h6 class="mb-3">🌡️ Filtros por Rangos Numéricos</h6>
+                                    <div class="row g-3">
+                                        <div class="col-md-6">
+                                            <label for="tmax_min" class="form-label form-label-sm">Temp. Máx. Mínima (°C)</label>
+                                            <input type="number" step="0.1" class="form-control form-control-sm" id="tmax_min" name="tmax_min"
+                                                   placeholder="Ej: 25.0" value="{{ filtros_aplicados.tmax_min }}">
+                                            <div class="form-text">Muestra días con **T. Máx. ≥** a este valor.</div>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label for="precip_min" class="form-label form-label-sm">Lluvia Mínima (mm)</label>
+                                            <input type="number" step="0.1" class="form-control form-control-sm" id="precip_min" name="precip_min"
+                                                   placeholder="Ej: 1.0" value="{{ filtros_aplicados.precip_min }}">
+                                            <div class="form-text">Muestra días con **Lluvia ≥** a este valor.</div>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label for="viento_min" class="form-label form-label-sm">Viento Mínimo (km/h)</label>
+                                            <input type="number" step="0.1" class="form-control form-control-sm" id="viento_min" name="viento_min"
+                                                   placeholder="Ej: 15.0" value="{{ filtros_aplicados.viento_min }}">
+                                            <div class="form-text">Muestra días con **Viento ≥** a este valor.</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="col-md-6">
+                                <div class="filter-section">
+                                    <h6 class="mb-3">☁️ Filtro por Condición Específica</h6>
+                                    <label for="condiciones_filtro" class="form-label">Condición Climática (Coincidencia Exacta)</label>
+                                    <select class="form-select" id="condiciones_filtro" name="condiciones_filtro">
+                                        <option value="TODAS" {% if filtros_aplicados.condiciones_filtro == 'TODAS' %}selected{% endif %}>TODAS las Condiciones</option>
+                                        <option value="Aguaceros Fuertes" {% if filtros_aplicados.condiciones_filtro == 'Aguaceros Fuertes' %}selected{% endif %}>Aguaceros Fuertes</option>
+                                        <option value="Tormenta" {% if filtros_aplicados.condiciones_filtro == 'Tormenta' %}selected{% endif %}>Tormenta</option>
+                                        <option value="Lluvia Moderada" {% if filtros_aplicados.condiciones_filtro == 'Lluvia Moderada' %}selected{% endif %}>Lluvia Moderada</option>
+                                        <option value="Llovizna" {% if filtros_aplicados.condiciones_filtro == 'Llovizna' %}selected{% endif %}>Llovizna</option>
+                                        <option value="Mayormente Despejado a Parcialmente Nublado" {% if filtros_aplicados.condiciones_filtro == 'Mayormente Despejado a Parcialmente Nublado' %}selected{% endif %}>Parcialmente Nublado</option>
+                                        <option value="Despejado" {% if filtros_aplicados.condiciones_filtro == 'Despejado' %}selected{% endif %}>Despejado</option>
+                                        <option value="Niebla / Escarcha" {% if filtros_aplicados.condiciones_filtro == 'Niebla / Escarcha' %}selected{% endif %}>Niebla / Escarcha</option>
+                                        <option value="Condiciones Variadas" {% if filtros_aplicados.condiciones_filtro == 'Condiciones Variadas' %}selected{% endif %}>Otras / Variadas</option>
+                                    </select>
+                                    <div class="form-text">Si seleccionas una condición, **solo** verás días etiquetados exactamente con esa condición.</div>
+                                </div>
                             </div>
                         </div>
-                        <div class="card-footer d-flex justify-content-end">
-                            <form method="POST" action="{{ url_for('descargar_pdf') }}">
-                                <button type="submit" class="btn btn-danger btn-lg">
-                                    <i class="fas fa-file-pdf me-2"></i> Descargar PDF
-                                </button>
-                            </form>
-                        </div>
-                    </div>
-                    {% else %}
-                        <div class="alert alert-info text-center">
-                            <i class="fas fa-info-circle me-2"></i>
-                            Realiza una consulta en la pestaña anterior para generar un reporte.
-                        </div>
+
+                        <button type="submit" class="btn btn-primary w-100 mb-3">Consultar y Aplicar Filtros</button>
+                    </form>
+
+                    {% if error_message %}
+                        <div class="alert alert-danger mt-4">{{ error_message }}</div>
                     {% endif %}
 
-                </div>
+                    {% if datos_historial %}
+                        <h4 class="mt-5">Resultados Filtrados para: <b>{{ tienda_seleccionada }}</b></h4>
+                        <p class="text-muted">Rango: 01/01/2024 hasta hace 5 días (límite de la API histórica). Días mostrados: **{{ datos_historial | length }}**</p>
 
-                <div class="tab-pane fade" id="historial" role="tabpanel" aria-labelledby="historial-tab">
+                        <form method="POST" action="/generar_pdf" target="_blank" class="mb-3">
+                            <input type="hidden" name="tienda_nombre" value="{{ tienda_seleccionada }}">
+                            <input type="hidden" name="datos_pdf_json" id="datos_pdf_input">
+                            <button type="submit" class="btn btn-success btn-sm">Generar PDF del Reporte</button>
+                        </form>
 
-                    {% if historial %}
-                        <div class="d-flex justify-content-end mb-3">
-                            <form method="POST" action="{{ url_for('vaciar_historial') }}">
-                                <button type="submit" class="btn btn-outline-danger btn-sm"
-                                        onclick="return confirm('¿Estás seguro de que deseas borrar todo el historial?');">
-                                    <i class="fas fa-trash-alt me-1"></i> Vaciar Historial
-                                </button>
-                            </form>
+                        <div class="table-responsive shadow">
+                            <table class="table table-sm table-striped table-hover">
+                                <thead class="sticky-header">
+                                    <tr class="table-dark">
+                                        <th>Fecha</th>
+                                        <th>T. Máx (°C)</th>
+                                        <th>T. Mín (°C)</th>
+                                        <th>Lluvia (mm)</th>
+                                        <th>Viento (km/h)</th>
+                                        <th>Nubosidad (%)</th>
+                                        <th>Condiciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for dia in datos_historial %}
+                                        <tr>
+                                            <td>{{ dia.fecha }}</td>
+                                            <td>{{ "%.1f" | format(dia.tmax | default(0)) }}</td>
+                                            <td>{{ "%.1f" | format(dia.tmin | default(0)) }}</td>
+                                            <td>
+                                                {% set precip = dia.precipitacion_mm | default(0) %}
+                                                {{ "%.2f" | format(precip) }}
+                                                {% if precip > 5 %}
+                                                    <span class="badge bg-primary badge-lluvia">Aguacero</span>
+                                                {% elif precip > 0.5 %}
+                                                    <span class="badge bg-info badge-lluvia">Lluvia</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>{{ "%.1f" | format(dia.viento_kmh | default(0)) }}</td>
+                                            <td>{{ "%.0f" | format(dia.nubosidad_perc | default(0)) }}</td>
+                                            <td>{{ dia.condiciones }}</td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
                         </div>
 
-                        <ul class="list-group">
-                            {% for item in historial %}
-                                <li class="list-group-item d-flex justify-content-between align-items-center historial-item">
-                                    <div>
-                                        <strong>{{ item.consulta }}</strong>
-                                        <small class="text-muted d-block">Consultado a las {{ item.hora_registro }}</small>
-                                    </div>
-                                    <form method="POST" action="{{ url_for('descargar_historial_pdf', index=loop.index0) }}" class="m-0">
-                                        <button type="submit" class="btn btn-sm btn-outline-danger" title="Descargar PDF de esta consulta">
-                                            <i class="fas fa-file-pdf"></i>
-                                        </button>
-                                    </form>
-                                </li>
-                            {% endfor %}
-                        </ul>
-                    {% else %}
-                        <div class="alert alert-secondary text-center">
-                            <i class="fas fa-box-open me-2"></i>
-                            El historial de consultas está vacío.
+                        <script>
+                            document.addEventListener('DOMContentLoaded', function() {
+                                const historialData = JSON.parse('{{ datos_historial | tojson | safe }}');
+                                document.getElementById('datos_pdf_input').value = JSON.stringify(historialData);
+                            });
+                        </script>
+
+                    {% elif tienda_seleccionada %}
+                         <div class="alert alert-info mt-4">
+                            No se encontraron datos climáticos que cumplan con los filtros para **{{ tienda_seleccionada }}** en el rango de 2024. Pruebe a relajar los filtros.
                         </div>
                     {% endif %}
-
                 </div>
             </div>
-        </div>
+        {% endif %}
+
+
+        {% if seccion_activa == 'ranking' %}
+            <div class="card shadow">
+                <div class="card-header bg-primary text-white">
+                    <h5>🏆 Ranking Anual de Temperaturas Máximas Promedio</h5>
+                </div>
+                <div class="card-body">
+                    {% if not ranking_data %}
+                        <div id="ranking-loading">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Cargando...</span>
+                            </div>
+                            <p class="mt-3 text-primary">Cargando ranking, por favor espere...</p>
+                        </div>
+                    {% elif ranking_data.ranking %}
+                        <div class="alert alert-warning">
+                            <p>⚠️ **ADVERTENCIA:** Esta consulta es **LENTA** (aproximadamente 30-45 segundos) ya que requiere obtener **{{ ranking_data.ranking | length }}** registros de datos históricos.</p>
+                            <p>El Ranking se calcula para el rango: **{{ ranking_data.fecha_inicio }}** hasta **{{ ranking_data.fecha_fin }}**.</p>
+                        </div>
+
+                        <div class="table-responsive shadow">
+                            <table class="table table-sm table-striped table-hover">
+                                <thead class="sticky-header">
+                                    <tr class="table-dark">
+                                        <th>Posición</th>
+                                        <th>Tienda</th>
+                                        <th>T. Máx. Promedio (°C)</th>
+                                        <th>Latitud</th>
+                                        <th>Longitud</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for tienda in ranking_data.ranking %}
+                                        <tr>
+                                            <td>
+                                                <b>{{ loop.index }}</b>
+                                                {% if loop.index == 1 %} 🥇
+                                                {% elif loop.index == 2 %} 🥈
+                                                {% elif loop.index == 3 %} 🥉
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                {% if tienda.tienda.startswith('Shopping') %}
+                                                    <span class="badge bg-success">{{ tienda.tienda }}</span>
+                                                {% else %}
+                                                    <span class="badge bg-info">{{ tienda.tienda }}</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                {% if tienda.tmax_promedio is not none %}
+                                                    <b>{{ "%.2f" | format(tienda.tmax_promedio) }} °C</b>
+                                                {% else %}
+                                                    <span class="text-danger">Error API/Dato Faltante</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>{{ tienda.lat }}</td>
+                                            <td>{{ tienda.lon }}</td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                         <div class="alert alert-danger">
+                            No se pudo calcular el ranking. Hubo errores de conexión o la API no devolvió datos para ninguna tienda.
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        {% endif %}
     </div>
-</div>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-<script>
-    // Función para mostrar/ocultar campos según el método de búsqueda
-    function cambiarCampos() {
-        const inputCiudad = document.getElementById('ciudad');
-        const inputDireccion = document.getElementById('direccion');
-        const inputCoordenadas = document.getElementById('coordenadas');
-
-        // 1. Ocultar todos los contenedores y quitar el 'required'
-        document.getElementById('campoCiudad').style.display = 'none';
-        document.getElementById('campoDireccion').style.display = 'none';
-        document.getElementById('campoCoordenadas').style.display = 'none';
-
-        inputCiudad.removeAttribute('required');
-        inputDireccion.removeAttribute('required');
-        inputCoordenadas.removeAttribute('required');
-
-        // 2. Mostrar el campo seleccionado y agregar el 'required'
-        if (document.getElementById('radioCiudad').checked) {
-            document.getElementById('campoCiudad').style.display = 'block';
-            inputCiudad.setAttribute('required', 'required');
-        } else if (document.getElementById('radioDireccion').checked) {
-            document.getElementById('campoDireccion').style.display = 'block';
-            inputDireccion.setAttribute('required', 'required');
-        } else if (document.getElementById('radioCoordenadas').checked) {
-            document.getElementById('campoCoordenadas').style.display = 'block';
-            inputCoordenadas.setAttribute('required', 'required');
-        }
-    }
-
-    // Función para mostrar el Toast (pop-up)
-    function showToast(type, message) {
-        const toastEl = document.getElementById('appToast');
-        const toastTitle = document.getElementById('toastTitle');
-        const toastIcon = document.getElementById('toastIcon');
-        const toastBody = document.getElementById('toastBody');
-
-        // Limpiar clases de color y título
-        toastEl.className = 'toast';
-        toastIcon.className = 'me-2';
-
-        if (type === 'success') {
-            toastEl.classList.add('text-bg-success');
-            toastTitle.textContent = 'Éxito';
-            toastIcon.classList.add('fas', 'fa-check-circle');
-        } else if (type === 'error') {
-            toastEl.classList.add('text-bg-danger');
-            toastTitle.textContent = 'Error';
-            toastIcon.classList.add('fas', 'fa-times-circle');
-        } else if (type === 'info') {
-            toastEl.classList.add('text-bg-info');
-            toastTitle.textContent = 'Información';
-            toastIcon.classList.add('fas', 'fa-info-circle');
-        }
-
-        toastBody.textContent = message;
-        const toast = new bootstrap.Toast(toastEl);
-        toast.show();
-    }
-
-    // Función para inicializar los tooltips de Bootstrap
-    function initializeTooltips() {
-        const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]')
-        const tooltipList = [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl))
-    }
-
-    // Función para activar la pestaña correcta al cargar la página
-    function activateTabOnLoad() {
-        const urlParams = new URLSearchParams(window.location.search);
-        const tabFromUrl = urlParams.get('tab');
-        const hasResult = document.getElementById('resultado-card');
-
-        let tabToActivate = 'consulta';
-
-        if (tabFromUrl) {
-            tabToActivate = tabFromUrl;
-        } else if (hasResult) {
-            // Si no hay 'tab' en la URL, pero sí hay resultado en la sesión, ir a 'reporte'
-            tabToActivate = 'reporte';
-        }
-
-        const triggerEl = document.getElementById(`${tabToActivate}-tab`);
-        if (triggerEl) {
-            bootstrap.Tab.getOrCreateInstance(triggerEl).show();
-        }
-    }
-
-    document.addEventListener('DOMContentLoaded', function() {
-        // Inicializar la lógica de campos del formulario
-        cambiarCampos();
-
-        // Activar la pestaña correcta (persistencia y redirección)
-        activateTabOnLoad();
-
-        // Inicializar tooltips
-        initializeTooltips();
-
-        // Manejo del spinner al enviar el formulario
-        const form = document.getElementById('consulta-form');
-        const loadingOverlay = document.getElementById('loading-overlay');
-
-        form.addEventListener('submit', function() {
-            loadingOverlay.style.display = 'flex';
-        });
-
-        // Mostrar la notificación Toast si existe en Flask
-        const notificationType = '{{ notification_type }}';
-        const notificationMessage = '{{ notification_message }}';
-
-        if (notificationType && notificationMessage) {
-            // Pequeño timeout para asegurar que el DOM esté listo para el Toast
-            setTimeout(() => {
-                showToast(notificationType, notificationMessage);
-            }, 50);
-        }
-
-        // --- Manejo para mantener la pestaña actual en el cambio de tema ---
-        var tabButtons = document.querySelectorAll('.nav-tabs .nav-link');
-        tabButtons.forEach(button => {
-            button.addEventListener('shown.bs.tab', function (event) {
-                var activeTabId = event.target.getAttribute('id').replace('-tab', '');
-                document.getElementById('current_tab_input').value = activeTabId;
-            });
-            // Establecer el valor inicial
-            if (button.classList.contains('active')) {
-                var activeTabId = button.getAttribute('id').replace('-tab', '');
-                document.getElementById('current_tab_input').value = activeTabId;
-            }
-        });
-    });
-</script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
